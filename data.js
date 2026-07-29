@@ -1,35 +1,18 @@
 /*
- * 工作台数据快照
- * 数据唯一事实源：C:\Users\EDY\Desktop\每日wb推送
- * 本文件由 WorkBuddy 读取上述 progress.json 与每日 md 后生成（快照）。
- * 重新构建工作台即可刷新为最新进度；请勿手工长期维护，以免与源文件脱节。
+ * 工作台数据快照（由云端 build_cloud.py 自动生成，勿手工修改）
+ * 数据唯一事实源：source/ 下每日 md 与 progress.json
  */
 window.WB_DATA = {
-  source: "C:\\Users\\EDY\\Desktop\\每日wb推送",
+  source: "source/",
   snapshot_date: "2026-07-29",
 
   // 考公：公考常识判断/progress.json
   kaogong: {
-    progress: {
-      day: 2,
-      last_module: 2,
-      recent_topics: [
-        "党的二十大与二十届三中全会区分",
-        "中国式现代化五大特征",
-        "党史转折会议(遵义/十一届三中)",
-        "宪法选举权条件",
-        "民法诉讼时效3年",
-        "刑法正当防卫"
-      ],
-      last_date: "2026-07-29"
-    },
-    // 7 大模块（顺序固定）
+    progress: {"day": 2, "last_module": 2, "recent_topics": ["党的二十大与二十届三中全会区分", "中国式现代化五大特征", "党史转折会议(遵义/十一届三中)", "宪法选举权条件", "民法诉讼时效3年", "刑法正当防卫"], "last_date": "2026-07-29"},
     modules: ["政治", "法律", "经济", "人文历史", "科技与生活", "地理国情", "管理公文"],
-    // 非必填：来自「我的薄弱项.md / 我的错题本.md」，暂无则 null
     weakness: null,
     wrongbook: null,
     weekly_quiz: null,
-    // 今日推送原文（公考常识判断/2026-07-29.md）
     today_md: `--- 📘 公考常识 · 第 1 周 · 星期三 · 2026-07-29 ---
 
 ### 知识点 1：宪法 · 选举权与被选举权
@@ -71,32 +54,9 @@ window.WB_DATA = {
 
   // 理财：财经热点知识/progress.json
   licai: {
-    progress: {
-      day: 2,
-      level: "L1",
-      covered: ["基金净值(NAV)", "仓位(持仓比例)"],
-      last_date: "2026-07-29"
-    },
-    // L1–L5 层级（顺序固定）
-    levels: [
-      "L1 基础认知",
-      "L2 市场术语",
-      "L3 策略指标",
-      "L4 宏观风险",
-      "L5 进阶专题"
-    ],
-    // 实时行情快照：由通达信 tdx-connector 实时拉取，WorkBuddy 定期刷新注入
-    // 刷新时间：2026-07-29 收盘（场内 ETF 为收盘价；场外基金为最新公布净值）
-    fund: [
-      { name: "沪深300ETF", code: "510300", price: 4.657, chg: 0.65, sector: "宽基指数·沪深300" },
-      { name: "中证500ETF", code: "510500", price: 7.54, chg: 1.03, sector: "宽基指数·中证500" },
-      { name: "创业板ETF", code: "159915", price: 3.402, chg: 1.40, sector: "宽基指数·创业板" },
-      { name: "华夏电网ETF联接C", code: "025857", price: 1.0973, chg: -4.07, sector: "新能源·电网设备" },
-      { name: "易方达中证A500A", code: "022459", price: 1.2405, chg: -3.04, sector: "宽基指数·中证A500" },
-      { name: "广发纳指100ETFC", code: "006479", price: 7.6526, chg: -0.39, sector: "海外·纳斯达克100(QDII)" },
-      { name: "汇添富竞争优势", code: "007639", price: 2.5247, chg: -6.56, sector: "主动权益·混合偏股" }
-    ],
-    // 今日推送原文（财经热点知识/2026-07-29.md）
+    progress: {"day": 2, "level": "L1", "covered": ["基金净值(NAV)", "仓位(持仓比例)"], "last_date": "2026-07-29"},
+    levels: ["L1 基础认知", "L2 市场术语", "L3 策略指标", "L4 宏观风险", "L5 进阶专题"],
+    fund: [{"name": "沪深300ETF", "code": "510300", "price": 4.657, "chg": 0.65, "sector": "宽基指数·沪深300"}, {"name": "中证500ETF", "code": "510500", "price": 7.54, "chg": 1.03, "sector": "宽基指数·中证500"}, {"name": "创业板ETF", "code": "159915", "price": 3.402, "chg": 1.4, "sector": "宽基指数·创业板"}, {"name": "华夏电网ETF联接C", "code": "025857", "price": 1.0973, "chg": -4.07, "sector": "新能源·电网设备"}, {"name": "易方达中证A500A", "code": "022459", "price": 1.2405, "chg": -3.04, "sector": "宽基指数·中证A500"}, {"name": "广发纳指100ETFC", "code": "006479", "price": 7.6526, "chg": -0.39, "sector": "海外·纳斯达克100(QDII)"}, {"name": "汇添富竞争优势", "code": "007639", "price": 2.4786, "chg": -1.83, "sector": "主动权益·混合偏股"}],
     today_md: `--- 📗 财经热点 · 第 1 周 · 星期三 · 2026-07-29 ---
 
 ## 🔥 今日热点（近 5 天）
