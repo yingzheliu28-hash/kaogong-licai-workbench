@@ -464,6 +464,15 @@
   var overlay = document.getElementById("overlay");
   overlay.addEventListener("click", closeMobileSidebar);
 
+  /* 移动端：汉堡按钮打开侧边栏 */
+  var mobileToggle = document.getElementById("mobileToggle");
+  if (mobileToggle) {
+    mobileToggle.addEventListener("click", function () {
+      document.getElementById("sidebar").classList.add("open");
+      overlay.classList.add("show");
+    });
+  }
+
   function closeMobileSidebar() {
     document.getElementById("sidebar").classList.remove("open");
     overlay.classList.remove("show");
