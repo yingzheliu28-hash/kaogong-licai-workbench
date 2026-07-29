@@ -14,7 +14,7 @@
   - 场内 ETF（510300/510500/159915）：腾讯 gtimg 接口
   - 场外基金（025857/022459/006479/007639）：东方财富 lsjz 接口（净值 DWJZ + 日涨幅 JZZZL）
 """
-import os, sys, json, re, datetime, urllib.request, urllib.error
+import os, sys, json, re, datetime, urllib.request, urllib.error, argparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SOURCE_DIR = os.environ.get("SOURCE_DIR") or os.path.join(HERE, "source")
@@ -87,10 +87,10 @@ def fetch_fund(code):
     return price, chg
 
 
-def load_fallback_funds():
+def load_fallback_funds(data_out):
     """接口失败时的兜底：读取已有 data.js 中的旧价格。"""
     fall = {}
-    if os.path.isfile(DATA_OUT):
+    if os.path.isfile(data_out):
         try:
             with open(DATA_OUT, encoding="utf-8") as f:
                 txt = f.read()
@@ -101,8 +101,8 @@ def load_fallback_funds():
     return fall
 
 
-def fetch_funds():
-    fall = load_fallback_funds()
+def fetch_funds(data_out):
+    fall = load_fallback_funds(data_out)
     result = []
     for code, name, sector, typ, market in FUNDS:
         price = chg = None
@@ -135,10 +135,7 @@ def js_md_lit(s):
     return "`" + s.rstrip("\n") + "`"
 
 
-def build():
-    # 本地预览/自动化模式可用 KG_DIR / LC_DIR 直接指向 Desktop 实际目录
-    kg_dir = os.environ.get("KG_DIR") or os.path.join(SOURCE_DIR, "kaogong")
-    lc_dir = os.environ.get("LC_DIR") or os.path.join(SOURCE_DIR, "licai")
+def build(kg_dir, lc_dir, data_out):
     kg_md = latest_md_path(kg_dir)
     lc_md = latest_md_path(lc_dir)
     kg_p = load_progress(kg_dir)
@@ -166,8 +163,7 @@ def build():
         "last_date": lc_p.get("last_date", os.path.basename(lc_md)[:10] if lc_md else snap),
     }
 
-    funds = fetch_funds()
-
+    funds = fetch_funds(data_out)
     out = []
     out.append("/*")
     out.append(" * 工作台数据快照（由云端 build_cloud.py 自动生成，勿手工修改）")
@@ -196,11 +192,21 @@ def build():
     out.append("  }")
     out.append("};")
     content = "\n".join(out) + "\n"
-    with open(DATA_OUT, "w", encoding="utf-8") as f:
+    with open(data_out, "w", encoding="utf-8") as f:
         f.write(content)
-    log("已写入 %s (snapshot=%s, funds=%d)" % (DATA_OUT, snap, len(funds)))
+    log("已写入 %s (snapshot=%s, funds=%d)" % (data_out, snap, len(funds)))
     return content
 
 
 if __name__ == "__main__":
-    build()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--kg-dir")
+    ap.add_argument("--lc-dir")
+    ap.add_argument("--out")
+    ap.add_argument("--source")
+    a = ap.parse_args()
+    src = a.source or os.environ.get("SOURCE_DIR") or SOURCE_DIR
+    kg_dir = a.kg_dir or os.environ.get("KG_DIR") or os.path.join(src, "kaogong")
+    lc_dir = a.lc_dir or os.environ.get("LC_DIR") or os.path.join(src, "licai")
+    data_out = a.out or os.environ.get("DATA_OUT") or DATA_OUT
+    build(kg_dir, lc_dir, data_out)
