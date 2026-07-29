@@ -136,8 +136,9 @@ def js_md_lit(s):
 
 
 def build():
-    kg_dir = os.path.join(SOURCE_DIR, "kaogong")
-    lc_dir = os.path.join(SOURCE_DIR, "licai")
+    # 本地预览/自动化模式可用 KG_DIR / LC_DIR 直接指向 Desktop 实际目录
+    kg_dir = os.environ.get("KG_DIR") or os.path.join(SOURCE_DIR, "kaogong")
+    lc_dir = os.environ.get("LC_DIR") or os.path.join(SOURCE_DIR, "licai")
     kg_md = latest_md_path(kg_dir)
     lc_md = latest_md_path(lc_dir)
     kg_p = load_progress(kg_dir)
