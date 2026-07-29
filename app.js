@@ -54,21 +54,56 @@
   }
 
   function parseLicai(md) {
+    // ── 热点：兼容两种格式 ──
+    // 格式A（旧）：**事件标题（来源：来源名）**
+    // 格式B（新/每日推送）：**事件**：...\n**来源**：...\n**影响**：\n①...
     var hotM = md.match(/## 🔥 今日热点[^\n]*\n\*\*([^（]+)（来源：([^）]+)）\*\*/);
-    var knowM = md.match(/## 📚 今日知识：([^（]+)（第\s*(\d+)\s*级\s*·\s*([^）]+)）/);
-    var tipM = md.match(/## 💡 小白提示\s*\n([\s\S]+)$/);
+    var hotTitle, hotSrc, fa, why, mean;
+    if (hotM) {
+      hotTitle = hotM[1].trim();
+      hotSrc = hotM[2].trim();
+      fa = bullet(md, "发生了什么") || bullet(md, "事件");
+      why = bullet(md, "为什么影响股市") || bullet(md, "为什么影响净值") || "";
+      mean = bullet(md, "意味着什么") || "";
+    } else {
+      // 格式B：逐字段提取
+      hotTitle = clean(between(md, "**事件**：", "\n**来源**")) || "—";
+      hotSrc = clean(between(md, "**来源**：", "\n**影响**")) ||
+                clean(between(md, "**来源**：", "\n")) || "";
+      var impactRaw = between(md, "**影响**：", "\n## ") || between(md, "**影响**：", null);
+      var lines = impactRaw.split(/\n/).map(function(l){return l.trim();}).filter(Boolean);
+      fa = lines.length > 0 ? clean(lines[0].replace(/^[①②③\d.\s]+/, "")) : "";
+      why = lines.length > 1 ? clean(lines[1].replace(/^[①②③\d.\s]+/, "")) : "";
+      mean = lines.length > 2 ? clean(lines[2].replace(/^[①②③\d.\s]+/, "")) : "";
+      if (!fa) fa = impactRaw.replace(/\n/g," ").substring(0, 200);
+    }
+
+    // ── 知识：兼容两种格式 ──
+    var knowM = md.match(/## 📚 今日知识[：:]?\s*([^\n（]+)[（(]([^\n)]+)[）)]/);
+    var knowName = knowM ? knowM[1].trim() : "—";
+    var knowLevelRaw = knowM ? knowM[2].trim() : "";
+    var lvlMatch = knowLevelRaw.match(/(?:第\s*)?(\d+)\s*级?\s*[·\.]\s*(.+)/);
+    var knowLevel = lvlMatch ? ("第 " + lvlMatch[1] + " 级 · " + lvlMatch[2]) : knowLevelRaw;
+
+    var dabai   = bullet(md, "一句人话")  || bullet(md, "大白话")  || "";
+    var biyu    = bullet(md, "举个例子")  || bullet(md, "生活化比喻") || "";
+    var zhuyi   = bullet(md, "对我有什么用") || bullet(md, "注意什么")  || "";
+    var tipM    = md.match(/## 💬 小白提示\s*\n([\s\S]+)$/)||
+                  md.match(/## 💡 小白提示\s*\n([\s\S]+)$/);
+    var tip     = tipM ? tipM[1].replace(/\*\*/g, "").trim() : "";
+
     return {
-      hotTitle: hotM ? hotM[1].trim() : "—",
-      hotSrc: hotM ? hotM[2].trim() : "",
-      fa: bullet(md, "发生了什么"),
-      why: bullet(md, "为什么影响股市/基金净值"),
-      mean: bullet(md, "意味着什么"),
-      knowName: knowM ? knowM[1].trim() : "—",
-      knowLevel: knowM ? ("第 " + knowM[2] + " 级 · " + knowM[3].trim()) : "",
-      dabai: bullet(md, "大白话"),
-      biyu: bullet(md, "生活化比喻"),
-      zhuyi: bullet(md, "注意什么"),
-      tip: tipM ? tipM[1].replace(/\*\*/g, "").trim() : ""
+      hotTitle: hotTitle,
+      hotSrc: hotSrc,
+      fa: fa,
+      why: why,
+      mean: mean,
+      knowName: knowName,
+      knowLevel: knowLevel,
+      dabai: dabai,
+      biyu: biyu,
+      zhuyi: zhuyi,
+      tip: tip
     };
   }
 

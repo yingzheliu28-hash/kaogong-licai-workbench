@@ -86,11 +86,11 @@ window.WB_DATA = {
       "L5 进阶专题"
     ],
     // 实时行情快照：由通达信 tdx-connector 实时拉取，WorkBuddy 定期刷新注入
-    // 刷新时间：2026-07-29 上午盘中（场内 ETF 为实时价；场外基金为最新公布净值）
+    // 刷新时间：2026-07-29 收盘（场内 ETF 为收盘价；场外基金为最新公布净值）
     fund: [
-      { name: "沪深300ETF", code: "510300", price: 4.615, chg: -0.26, sector: "宽基指数·沪深300" },
-      { name: "中证500ETF", code: "510500", price: 7.378, chg: -1.14, sector: "宽基指数·中证500" },
-      { name: "创业板ETF", code: "159915", price: 3.334, chg: -0.63, sector: "宽基指数·创业板" },
+      { name: "沪深300ETF", code: "510300", price: 4.657, chg: 0.65, sector: "宽基指数·沪深300" },
+      { name: "中证500ETF", code: "510500", price: 7.54, chg: 1.03, sector: "宽基指数·中证500" },
+      { name: "创业板ETF", code: "159915", price: 3.402, chg: 1.40, sector: "宽基指数·创业板" },
       { name: "华夏电网ETF联接C", code: "025857", price: 1.0973, chg: -4.07, sector: "新能源·电网设备" },
       { name: "易方达中证A500A", code: "022459", price: 1.2405, chg: -3.04, sector: "宽基指数·中证A500" },
       { name: "广发纳指100ETFC", code: "006479", price: 7.6526, chg: -0.39, sector: "海外·纳斯达克100(QDII)" },
