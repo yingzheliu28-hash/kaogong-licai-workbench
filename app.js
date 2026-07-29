@@ -36,20 +36,50 @@
 
   /* ── 解析 md 快照 ── */
   function parseKaogong(md) {
-    var mod = md.match(/今日模块：\s*①\s*([^（\n]+?)\s*（day\s*(\d+)/);
-    var moduleName = mod ? mod[1].trim() : "—";
-    var day = mod ? parseInt(mod[2], 10) : 1;
-    var segs = md.split(/\n## 知识点 \d+：/).slice(1);
+    // 模块名 / 天数：优先用 progress.json（数据事实源），不再依赖 md 里的"今日模块"
+    var moduleName = (D.kaogong.modules && D.kaogong.modules[D.kaogong.progress.last_module]) || "—";
+    var day = D.kaogong.progress.day || 1;
+
+    // 拆分知识点：兼容 ## 与 ###（新每日推送用三级标题 ### 知识点 N：）
+    var segs = md.split(/\n[#]{2,3} 知识点 \d+：/).slice(1);
+
     var points = segs.map(function (seg) {
       var title = (seg.match(/^([^\n]+)/) || [, "知识点"])[1].trim();
-      var jiangjie = clean(between(seg, "📌 知识点讲解：**", "**🧠 记忆口诀：**"));
-      var koujue = clean(between(seg, "🧠 记忆口诀：**", "**📝 对应原题：**"));
-      var yuan = between(seg, "📝 对应原题：**", "**✅ 答案：**");
-      var answer = clean(between(seg, "✅ 答案：**", "**🔍 解析：**"));
-      var jiexi = clean(between(seg, "🔍 解析：**", null));
-      var qLines = yuan.split("\n").map(function (l) { return l.replace(/^>\s?/, "").trim(); }).filter(Boolean);
+
+      // 讲解：新格式 📌 **讲解**：…🧠；旧格式 📌 知识点讲解：** …**🧠
+      var jiangjie = clean(
+        between(seg, "📌 **讲解**：", "🧠 **口诀**") ||
+        between(seg, "📌 知识点讲解：**", "**🧠 记忆口诀：**")
+      );
+
+      // 口诀：新 🧠 **口诀**：…📝；旧 🧠 记忆口诀：** …**📝
+      var koujue = clean(
+        between(seg, "🧠 **口诀**：", "📝") ||
+        between(seg, "🧠 记忆口诀：**", "**📝 对应原题：**")
+      );
+
+      // 原题段：从 📝 到 ✅ **答案**：；旧 📝 对应原题：** 到 **✅ 答案：**
+      var yuan = between(seg, "📝", "✅ **答案**：") ||
+                 between(seg, "📝 对应原题：**", "**✅ 答案：**");
+      var qLines = (yuan || "").split("\n").map(function (l) {
+        return l.replace(/^>\s?/, "").trim();
+      }).filter(function (l) { return l && !/^[#📝✅🔍💡📌🧠🍎]/.test(l); });
+
+      // 答案：新 ✅ **答案**：；旧 ✅ 答案：**
+      var answer = clean(
+        between(seg, "✅ **答案**：", "🔍") ||
+        between(seg, "✅ 答案：**", "**🔍 解析：**")
+      );
+
+      // 解析：新 🔍 **解析**：；旧 🔍 解析：**
+      var jiexi = clean(
+        between(seg, "🔍 **解析**：", null) ||
+        between(seg, "🔍 解析：**", null)
+      );
+
       return { title: title, jiangjie: jiangjie, koujue: koujue, qLines: qLines, answer: answer, jiexi: jiexi };
     });
+
     return { moduleName: moduleName, day: day, points: points };
   }
 
