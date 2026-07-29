@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>路遥求索 · 个人工作台</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ====== 侧边栏 ====== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand" data-page="home">
+      <span class="brand-icon">🌿</span>
+      <span class="brand-text">路遥求索</span>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-page="home">
+        <span class="nav-emoji">🏠</span>
+        <span class="nav-label">首页总览</span>
+      </button>
+      <button class="nav-item" data-page="kaogong">
+        <span class="nav-emoji">📚</span>
+        <span class="nav-label">考公</span>
+        <span class="nav-badge" id="badge-kg"></span>
+      </button>
+      <button class="nav-item" data-page="licai">
+        <span class="nav-emoji">💰</span>
+        <span class="nav-label">理财</span>
+        <span class="nav-badge" id="badge-lc"></span>
+      </button>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="streak-pill" id="global-streak"></div>
+    </div>
+  </aside>
+
+  <!-- ====== 主内容区 ====== -->
+  <main class="main" id="main">
+
+    <!-- ── 首页总览 ── -->
+    <div class="page active" id="page-home">
+      <div class="page-header home-header">
+        <h1 class="page-title" id="home-greet"></h1>
+        <p class="page-sub" id="home-date"></p>
+      </div>
+      <div class="dashboard-grid" id="home-dashboard"></div>
+    </div>
+
+    <!-- ── 考公 ── -->
+    <div class="page" id="page-kaogong">
+      <div class="page-header kg-header">
+        <div class="motto-wrap" id="kg-motto"></div>
+        <div class="stats-row" id="kg-stats"></div>
+      </div>
+      <!-- 子页面 Tab 栏 -->
+      <div class="tab-bar" id="kg-tabs">
+        <button class="tab active" data-tab="kg-knowledge"><span class="t-emoji">📖</span> 知识考点</button>
+        <button class="tab" data-tab="kg-weak"><span class="t-emoji">🎯</span> 薄弱项</button>
+        <button class="tab" data-tab="kg-wrong"><span class="t-emoji">📝</span> 错题本</button>
+        <button class="tab" data-tab="kg-quiz"><span class="t-emoji">📊</span> 周测分析</button>
+      </div>
+      <!-- 考公子页面容器 -->
+      <div class="tab-content" id="kg-content"></div>
+    </div>
+
+    <!-- ── 理财 ── -->
+    <div class="page" id="page-licai">
+      <div class="page-header lc-header">
+        <div class="motto-wrap" id="lc-motto"></div>
+        <div class="stats-row" id="lc-stats"></div>
+      </div>
+      <!-- 子页面 Tab 栏 -->
+      <div class="tab-bar lc-tabs" id="lc-tabs">
+        <button class="tab active" data-tab="lc-hot"><span class="t-emoji">🔥</span> 热点知识</button>
+        <button class="tab" data-tab="lc-know"><span class="t-emoji">📚</span> 今日知识</button>
+        <button class="tab" data-tab="lc-market"><span class="t-emoji">📈</span> 实时行情</button>
+      </div>
+      <!-- 理财子页面容器 -->
+      <div class="tab-content" id="lc-content"></div>
+    </div>
+
+  </main>
+
+  <!-- 移动端遮罩 -->
+  <div class="overlay" id="overlay"></div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
