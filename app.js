@@ -122,19 +122,107 @@
                   md.match(/## 💡 小白提示\s*\n([\s\S]+)$/);
     var tip     = tipM ? tipM[1].replace(/\*\*/g, "").trim() : "";
 
-    return {
-      hotTitle: hotTitle,
-      hotSrc: hotSrc,
-      fa: fa,
-      why: why,
-      mean: mean,
-      knowName: knowName,
-      knowLevel: knowLevel,
-      dabai: dabai,
-      biyu: biyu,
-      zhuyi: zhuyi,
-      tip: tip
-    };
+return {
+    hotTitle: hotTitle,
+    hotSrc: hotSrc,
+    fa: fa,
+    why: why,
+    mean: mean,
+    knowName: knowName,
+    knowLevel: knowLevel,
+    dabai: dabai,
+    biyu: biyu,
+    zhuyi: zhuyi,
+    tip: tip
+  };
+}
+
+  /* ── 历史 md 解析（周末总结 Tab 用） ── */
+  function parseHistory(historyMd, parserFn) {
+    if (!Array.isArray(historyMd)) return [];
+    return historyMd.map(function (h) {
+      var parsed = parserFn(h.md || "");
+      return { date: h.date, parsed: parsed };
+    });
+  }
+
+  var kgHistory = parseHistory(D.kaogong.history_md, parseKaogong);
+  var lcHistory = parseHistory(D.licai.history_md, parseLicai);
+
+  /* ── 笔记存储（localStorage 单设备；云端同步靠导出 notes.json 落 source/） ── */
+  var NOTES_LS_KEY = "wb_notes_v1";
+  function loadAllNotes() {
+    try {
+      var raw = localStorage.getItem(NOTES_LS_KEY);
+      var stored = raw ? JSON.parse(raw) : {};
+      // 与 data.js 内嵌的 notes 合并（云端/历史）作为兜底
+      var fromCloud = D.notes || {};
+      var merged = {};
+      Object.keys(stored).forEach(function (k) { merged[k] = stored[k]; });
+      Object.keys(fromCloud).forEach(function (k) {
+        if (!merged[k]) merged[k] = fromCloud[k];
+      });
+      return merged;
+    } catch (e) { return D.notes || {}; }
+  }
+  function saveAllNotes(map) {
+    try { localStorage.setItem(NOTES_LS_KEY, JSON.stringify(map)); } catch (e) {}
+  }
+  function noteKey(module, date, idx) {
+    return module + "::" + date + "::" + idx;
+  }
+  var notesAll = loadAllNotes();
+
+  function toast(msg) {
+    var t = document.createElement("div");
+    t.className = "toast";
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, 1800);
+  }
+
+  /* ── 笔记按钮 HTML（在每个知识点卡片底部渲染） ── */
+  function noteBtnHtml(module, date, idx) {
+    var k = noteKey(module, date, idx);
+    var has = !!(notesAll[k] && notesAll[k].trim());
+    var label = has ? "✏️ 修改笔记" : "📝 笔记";
+    return '<button class="note-btn ' + (has ? "has-note" : "") + '" data-note-key="' + k + '">' + label + '</button>';
+  }
+  function noteDisplayHtml(module, date, idx) {
+    var k = noteKey(module, date, idx);
+    var t = notesAll[k] || "";
+    if (!t.trim()) return "";
+    return '<div class="note-display">' + esc(t) + '</div>';
+  }
+  /* 渲染笔记编辑器（点击按钮后展开） */
+  function noteEditorHtml(module, date, idx) {
+    var k = noteKey(module, date, idx);
+    var t = notesAll[k] || "";
+    return '<div class="note-editor" data-note-editor="' + k + '">' +
+      '<textarea placeholder="写下你的理解感悟…">' + esc(t) + '</textarea>' +
+      '<div class="note-editor-actions">' +
+        '<button class="note-cancel" data-note-cancel="' + k + '">取消</button>' +
+        '<button class="note-save" data-note-save="' + k + '">保存</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /* 导出全部笔记为 JSON（用户下载后放进 source/notes.json 即可跨设备同步） */
+  function exportNotesJson() {
+    var map = {};
+    Object.keys(notesAll).forEach(function (k) {
+      if (notesAll[k] && notesAll[k].trim()) map[k] = notesAll[k];
+    });
+    var json = JSON.stringify(map, null, 2);
+    var blob = new Blob([json], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "notes.json";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 200);
+    toast("已下载 notes.json，把它放进 source/ 目录即可云端同步");
   }
 
   var kg = parseKaogong(D.kaogong.today_md);
@@ -245,6 +333,8 @@
             (p.answer ? '<div class="kp-ans">答案：<span class="ok">' + esc(p.answer) + '</span></div>' : '') +
             (p.jiexi ? '<div class="kp-exp">💡 ' + esc(p.jiexi) + '</div>' : '') +
           '</details>' +
+          noteBtnHtml("kaogong", D.snapshot_date, idx) +
+          noteDisplayHtml("kaogong", D.snapshot_date, idx) +
         '</div>';
     });
 
@@ -314,12 +404,60 @@
     }
   }
 
+  /* -- Tab: 周末总结（考公）-- */
+  function renderKgWeekly() {
+    var rows = kgHistory.slice(-7).reverse();
+    var hasNote = Object.keys(notesAll).some(function (k) {
+      return k.indexOf("kaogong::") === 0 && notesAll[k] && notesAll[k].trim();
+    });
+
+    if (!rows.length) {
+      document.getElementById("kg-content").innerHTML =
+        '<div class="weekly-empty fade"><div class="big-emoji">🗓️</div>' +
+        '<p>暂无历史数据。等 12:30 推送累计几天后，这里会显示过去 7 天的考点 + 笔记。</p></div>';
+      return;
+    }
+
+    var noteCount = Object.keys(notesAll).filter(function (k) {
+      return k.indexOf("kaogong::") === 0 && notesAll[k] && notesAll[k].trim();
+    }).length;
+
+    var cards = rows.map(function (row) {
+      var d = row.parsed;
+      var isToday = row.date === D.snapshot_date;
+      var topics = (d.points || []).map(function (p, idx) {
+        var noteH = noteDisplayHtml("kaogong", row.date, idx);
+        return '<div class="weekly-topic">' +
+          '<div class="weekly-topic-title">' + (idx+1) + '. ' + esc(p.title) + '</div>' +
+          (p.jiangjie ? '<div class="weekly-topic-explain">📌 ' + esc(p.jiangjie) + '</div>' : '') +
+          (p.koujue ? '<div class="weekly-topic-explain" style="margin-top:2px;">🧠 ' + esc(p.koujue) + '</div>' : '') +
+          noteH +
+        '</div>';
+      }).join("");
+      return '<div class="weekly-day-card fade">' +
+        '<div class="weekly-day-header">' +
+          '<span class="weekly-day-date">' + esc(row.date) + (isToday ? '（今天）' : '') + '</span>' +
+          '<span class="weekly-day-meta">' + esc(d.moduleName) + ' · DAY ' + d.day + '</span>' +
+        '</div>' +
+        (topics || '<div class="weekly-topic-explain">— 无知识点 —</div>') +
+      '</div>';
+    }).join("");
+
+    document.getElementById("kg-content").innerHTML =
+      '<div class="weekly-toolbar">' +
+        '<span class="toolbar-label">过去 7 天 · 共 ' + rows.length + ' 天 · 已写 ' + noteCount + ' 条笔记</span>' +
+        '<button onclick="WB.exportNotes()">📥 导出笔记 JSON</button>' +
+      '</div>' +
+      cards;
+  }
+
   /* 考公 tab 分发 */
   var KgRenderers = {
     "kg-knowledge": renderKgKnowledge,
     "kg-weak": renderKgWeak,
     "kg-wrong": renderKgWrong,
-    "kg-quiz": renderKgQuiz
+    "kg-quiz": renderKgQuiz,
+    "kg-weekly": renderKgWeekly
   };
   function renderKaogong() {
     renderKgHeader();
@@ -385,6 +523,8 @@
           '<li><b>注意什么：</b>' + esc(cj.zhuyi) + '</li>' +
         '</ul>' +
         (cj.tip ? '<div class="know-tip">💡 ' + esc(cj.tip) + '</div>' : '') +
+        noteBtnHtml("licai", D.snapshot_date, 0) +
+        noteDisplayHtml("licai", D.snapshot_date, 0) +
       '</div>';
   }
 
@@ -414,11 +554,56 @@
     }
   }
 
+  /* -- Tab: 周末总结（理财）-- */
+  function renderLcWeekly() {
+    var rows = lcHistory.slice(-7).reverse();
+    var noteCount = Object.keys(notesAll).filter(function (k) {
+      return k.indexOf("licai::") === 0 && notesAll[k] && notesAll[k].trim();
+    }).length;
+
+    if (!rows.length) {
+      document.getElementById("lc-content").innerHTML =
+        '<div class="weekly-empty fade"><div class="big-emoji">🗓️</div>' +
+        '<p>暂无历史数据。等 12:30 推送累计几天后，这里会显示过去 7 天的热点 + 知识 + 笔记。</p></div>';
+      return;
+    }
+
+    var cards = rows.map(function (row) {
+      var d = row.parsed;
+      var isToday = row.date === D.snapshot_date;
+      var noteH = noteDisplayHtml("licai", row.date, 0);
+      return '<div class="weekly-day-card fade">' +
+        '<div class="weekly-day-header">' +
+          '<span class="weekly-day-date">' + esc(row.date) + (isToday ? '（今天）' : '') + '</span>' +
+          '<span class="weekly-day-meta">' + esc(d.knowLevel || "—") + '</span>' +
+        '</div>' +
+        '<div class="weekly-topic">' +
+          '<div class="weekly-topic-title">🔥 ' + esc(d.hotTitle || "—") + '</div>' +
+          '<div class="weekly-topic-explain">📰 ' + esc(d.hotSrc || "—") + '</div>' +
+        '</div>' +
+        '<div class="weekly-topic">' +
+          '<div class="weekly-topic-title">📚 ' + esc(d.knowName || "—") + '</div>' +
+          (d.dabai ? '<div class="weekly-topic-explain">大白话：' + esc(d.dabai) + '</div>' : '') +
+          (d.biyu ? '<div class="weekly-topic-explain">比喻：' + esc(d.biyu) + '</div>' : '') +
+        '</div>' +
+        noteH +
+      '</div>';
+    }).join("");
+
+    document.getElementById("lc-content").innerHTML =
+      '<div class="weekly-toolbar">' +
+        '<span class="toolbar-label">过去 7 天 · 共 ' + rows.length + ' 天 · 已写 ' + noteCount + ' 条笔记</span>' +
+        '<button class="primary" onclick="WB.exportNotes()">📥 导出笔记 JSON</button>' +
+      '</div>' +
+      cards;
+  }
+
   /* 理财 tab 分发 */
   var LcRenderers = {
     "lc-hot": renderLcHot,
     "lc-know": renderLcKnow,
-    "lc-market": renderLcMarket
+    "lc-market": renderLcMarket,
+    "lc-weekly": renderLcWeekly
   };
   function renderLicai() {
     renderLcHeader();
@@ -511,8 +696,53 @@
   /* 全局 API（供内联 onclick 使用） */
   window.WB = {
     navigate: switchPage,
-    switchTab: switchTab
+    switchTab: switchTab,
+    exportNotes: exportNotesJson
   };
+
+  /* ── 笔记按钮事件委托（点开/保存/取消） ── */
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-note-key]");
+    if (btn) {
+      var k = btn.getAttribute("data-note-key");
+      var card = btn.closest(".kp-card, .know-card");
+      if (!card) return;
+      // 若编辑器已展开则关闭
+      var exist = card.querySelector('.note-editor[data-note-editor="' + k + '"]');
+      if (exist) { exist.remove(); return; }
+      // 否则展开编辑器
+      card.insertAdjacentHTML("beforeend", noteEditorHtml(k.split("::")[0], k.split("::")[1], k.split("::")[2]));
+      var ta = card.querySelector('.note-editor[data-note-editor="' + k + '"] textarea');
+      if (ta) ta.focus();
+      return;
+    }
+    var sv = e.target.closest("[data-note-save]");
+    if (sv) {
+      var key = sv.getAttribute("data-note-save");
+      var editor = sv.closest(".note-editor");
+      var ta = editor ? editor.querySelector("textarea") : null;
+      var text = ta ? ta.value : "";
+      notesAll[key] = text;
+      saveAllNotes(notesAll);
+      // 重渲染当前 Tab
+      var card = sv.closest(".kp-card, .know-card");
+      var section = card && card.classList.contains("kp-card") ? "kg" : "lc";
+      if (state.page === "kaogong" || state.page === "licai") {
+        if (section === "kg") renderKaogong();
+        else renderLicai();
+      } else {
+        renderHome();
+      }
+      toast(text.trim() ? "✅ 笔记已保存到本设备" : "🗑️ 已清空笔记");
+      return;
+    }
+    var cn = e.target.closest("[data-note-cancel]");
+    if (cn) {
+      var ed = cn.closest(".note-editor");
+      if (ed) ed.remove();
+      return;
+    }
+  });
 
   /* ═════════════════════════════════
      初始化
