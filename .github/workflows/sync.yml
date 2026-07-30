@@ -1,0 +1,40 @@
+name: 工作台数据同步（云端发布层）
+
+on:
+  push:
+    paths:
+      - 'source/**'
+  schedule:
+    - cron: '23 */2 * * *'   # 每 2 小时（错峰），刷新行情
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build data.js from source + public fund APIs
+        run: python build_cloud.py
+
+      - name: Commit and push data.js
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git add data.js
+          if git diff --cached --quiet; then
+            echo "data.js 无变化，跳过提交"
+          else
+            git commit -m "chore: 云端重建 data.js $(date +%F)"
+            git push origin HEAD:main
+          fi
