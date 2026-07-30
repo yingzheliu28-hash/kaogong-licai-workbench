@@ -56,7 +56,7 @@ window.WB_DATA = {
   licai: {
     progress: {"day": 2, "level": "L1", "covered": ["基金净值(NAV)", "仓位(持仓比例)"], "last_date": "2026-07-29"},
     levels: ["L1 基础认知", "L2 市场术语", "L3 策略指标", "L4 宏观风险", "L5 进阶专题"],
-    fund: [{"name": "沪深300ETF", "code": "510300", "price": 4.657, "chg": 0.65, "sector": "宽基指数·沪深300"}, {"name": "中证500ETF", "code": "510500", "price": 7.54, "chg": 1.03, "sector": "宽基指数·中证500"}, {"name": "创业板ETF", "code": "159915", "price": 3.402, "chg": 1.4, "sector": "宽基指数·创业板"}, {"name": "华夏电网ETF联接C", "code": "025857", "price": 1.1133, "chg": 1.46, "sector": "新能源·电网设备"}, {"name": "易方达中证A500A", "code": "022459", "price": 1.2496, "chg": 0.73, "sector": "宽基指数·中证A500"}, {"name": "广发纳指100ETFC", "code": "006479", "price": 7.5778, "chg": -0.98, "sector": "海外·纳斯达克100(QDII)"}, {"name": "汇添富竞争优势", "code": "007639", "price": 2.4786, "chg": -1.83, "sector": "主动权益·混合偏股"}],
+    fund: [{"name": "沪深300ETF", "code": "510300", "price": 4.56, "chg": -2.08, "sector": "宽基指数·沪深300"}, {"name": "中证500ETF", "code": "510500", "price": 7.263, "chg": -3.67, "sector": "宽基指数·中证500"}, {"name": "创业板ETF", "code": "159915", "price": 3.204, "chg": -5.82, "sector": "宽基指数·创业板"}, {"name": "华夏电网ETF联接C", "code": "025857", "price": 1.1133, "chg": 1.46, "sector": "新能源·电网设备"}, {"name": "易方达中证A500A", "code": "022459", "price": 1.2496, "chg": 0.73, "sector": "宽基指数·中证A500"}, {"name": "广发纳指100ETFC", "code": "006479", "price": 7.5778, "chg": -0.98, "sector": "海外·纳斯达克100(QDII)"}, {"name": "汇添富竞争优势", "code": "007639", "price": 2.4786, "chg": -1.83, "sector": "主动权益·混合偏股"}],
     today_md: `--- 📗 财经热点 · 第 1 周 · 星期三 · 2026-07-29 ---
 
 ## 🔥 今日热点（近 5 天）
