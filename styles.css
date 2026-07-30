@@ -495,3 +495,187 @@ body {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0ms !important; transition-duration: 0ms !important; }
 }
+
+/* ═════════════════════════════════
+   笔记 & 周末总结
+   ═════════════════════════════════ */
+
+/* 笔记按钮（卡片右下角小图标按钮） */
+.note-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid var(--mist);
+  color: var(--mist);
+  font-size: var(--fs-xs);
+  font-family: var(--mono);
+  padding: 3px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all .2s ease;
+  margin-top: var(--sp-2);
+}
+.note-btn:hover { border-color: var(--kg-accent); color: var(--kg-accent); }
+.know-card .note-btn:hover, .lc-content .note-btn:hover { border-color: var(--lc-accent); color: var(--lc-accent); }
+.note-btn.has-note { border-color: var(--kg-accent); color: var(--kg-accent); background: var(--kg-bg); }
+.know-card .note-btn.has-note { border-color: var(--lc-accent); color: var(--lc-accent); background: var(--lc-bg); }
+
+/* 笔记编辑器（点击按钮展开） */
+.note-editor {
+  margin-top: var(--sp-2);
+  padding: var(--sp-3);
+  background: rgba(0,0,0,.02);
+  border-left: 3px solid var(--kg-accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  animation: pageIn .25s ease both;
+}
+.know-card .note-editor, .lc-content .note-editor { border-left-color: var(--lc-accent); }
+.note-editor textarea {
+  width: 100%;
+  min-height: 70px;
+  resize: vertical;
+  border: 1px solid transparent;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  padding: var(--sp-2);
+  border-radius: var(--radius-sm);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color .2s ease;
+}
+.note-editor textarea:focus { border-color: var(--mist); }
+.note-editor-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  justify-content: flex-end;
+  align-items: center;
+}
+.note-editor-actions button {
+  font-size: var(--fs-xs);
+  font-family: var(--mono);
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all .15s ease;
+}
+.note-save { background: var(--kg-accent); color: #fff; border-color: var(--kg-accent); }
+.know-card .note-save, .lc-content .note-save { background: var(--lc-accent); border-color: var(--lc-accent); }
+.note-save:hover { opacity: .88; }
+.note-cancel { background: transparent; color: var(--mist); border-color: var(--mist); }
+.note-cancel:hover { color: var(--ink); border-color: var(--ink); }
+
+/* 笔记展示（周末总结用，只读） */
+.note-display {
+  margin-top: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: rgba(0,0,0,.025);
+  border-left: 3px solid var(--kg-accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.lc-content .note-display { border-left-color: var(--lc-accent); }
+.note-display:empty { display: none; }
+.note-display::before {
+  content: "📝 笔记：";
+  color: var(--mist);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* 周末总结视图 */
+.weekly-day-card {
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
+  box-shadow: var(--shadow-sm);
+}
+.weekly-day-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--sp-3);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px dashed var(--rule);
+}
+.weekly-day-date {
+  font-family: var(--mono);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink);
+}
+.weekly-day-meta { font-size: var(--fs-xs); color: var(--mist); }
+.weekly-topic {
+  margin-bottom: var(--sp-3);
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--mist);
+}
+.weekly-topic:last-child { margin-bottom: 0; border-left-color: transparent; padding-left: 0; }
+.weekly-topic-title { font-size: var(--fs-sm); font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+.weekly-topic-explain { font-size: var(--fs-sm); color: var(--mist); }
+
+.weekly-empty { text-align: center; padding: var(--sp-6) var(--sp-4); color: var(--mist); }
+.weekly-empty .big-emoji { font-size: 42px; opacity: .4; margin-bottom: var(--sp-3); }
+
+/* 周末总结顶部工具栏 */
+.weekly-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.weekly-toolbar .toolbar-label {
+  font-size: var(--fs-sm);
+  color: var(--mist);
+  margin-right: auto;
+}
+.weekly-toolbar button {
+  font-size: var(--fs-xs);
+  font-family: var(--mono);
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border: 1px solid var(--mist);
+  background: transparent;
+  color: var(--ink);
+  transition: all .15s ease;
+}
+.weekly-toolbar button:hover { border-color: var(--kg-accent); color: var(--kg-accent); }
+.weekly-toolbar button.primary { background: var(--kg-accent); color: #fff; border-color: var(--kg-accent); }
+.weekly-toolbar button.primary:hover { opacity: .9; }
+.lc-content .weekly-toolbar button.primary { background: var(--lc-accent); border-color: var(--lc-accent); }
+
+/* 笔记浮窗提示 */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,.78);
+  color: #fff;
+  font-size: var(--fs-sm);
+  padding: 8px 18px;
+  border-radius: 20px;
+  z-index: 9999;
+  animation: toastIn .25s ease both;
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
