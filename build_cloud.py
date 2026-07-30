@@ -46,14 +46,18 @@ def http_get(url, headers=None, timeout=20):
         return r.read().decode("utf-8", "ignore")
 
 
-def latest_md_path(track_dir):
+def all_md_paths(track_dir):
+    """收集目录下所有 YYYY-MM-DD.md（按日期升序）。"""
     if not os.path.isdir(track_dir):
-        return None
+        return []
     cands = [f for f in os.listdir(track_dir) if re.match(r"^\d{4}-\d{2}-\d{2}\.md$", f)]
-    if not cands:
-        return None
     cands.sort()
-    return os.path.join(track_dir, cands[-1])
+    return [os.path.join(track_dir, f) for f in cands]
+
+
+def latest_md_path(track_dir):
+    paths = all_md_paths(track_dir)
+    return paths[-1] if paths else None
 
 
 def load_progress(track_dir):
@@ -61,6 +65,18 @@ def load_progress(track_dir):
     if os.path.isfile(p):
         with open(p, encoding="utf-8") as f:
             return json.load(f)
+    return {}
+
+
+def load_notes(source_root):
+    """从 source/notes.json 读取用户笔记（云端发布层用）。"""
+    p = os.path.join(source_root, "notes.json")
+    if os.path.isfile(p):
+        try:
+            with open(p, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            log("读取 notes.json 失败:", e)
     return {}
 
 
@@ -135,7 +151,7 @@ def js_md_lit(s):
     return "`" + s.rstrip("\n") + "`"
 
 
-def build(kg_dir, lc_dir, data_out):
+def build(kg_dir, lc_dir, data_out, source_root=None):
     kg_md = latest_md_path(kg_dir)
     lc_md = latest_md_path(lc_dir)
     kg_p = load_progress(kg_dir)
@@ -163,11 +179,24 @@ def build(kg_dir, lc_dir, data_out):
         "last_date": lc_p.get("last_date", os.path.basename(lc_md)[:10] if lc_md else snap),
     }
 
+    # 历史 md：考公 + 理财全部 YYYY-MM-DD.md，按日期升序；用于「周末总结」Tab。
+    kg_history = []
+    for p in all_md_paths(kg_dir):
+        d = os.path.basename(p)[:10]
+        kg_history.append({"date": d, "md": open(p, encoding="utf-8").read()})
+    lc_history = []
+    for p in all_md_paths(lc_dir):
+        d = os.path.basename(p)[:10]
+        lc_history.append({"date": d, "md": open(p, encoding="utf-8").read()})
+
+    # 笔记：浏览器导出到 source/notes.json 即可跨设备同步
+    notes = load_notes(source_root) if source_root else {}
+
     funds = fetch_funds(data_out)
     out = []
     out.append("/*")
     out.append(" * 工作台数据快照（由云端 build_cloud.py 自动生成，勿手工修改）")
-    out.append(" * 数据唯一事实源：source/ 下每日 md 与 progress.json")
+    out.append(" * 数据唯一事实源：source/ 下每日 md + progress.json + notes.json")
     out.append(" */")
     out.append("window.WB_DATA = {")
     out.append('  source: "source/",')
@@ -180,7 +209,8 @@ def build(kg_dir, lc_dir, data_out):
     out.append("    weakness: null,")
     out.append("    wrongbook: null,")
     out.append("    weekly_quiz: null,")
-    out.append("    today_md: " + js_md_lit(kg_md_text))
+    out.append("    today_md: " + js_md_lit(kg_md_text) + ",")
+    out.append("    history_md: " + json.dumps([{"date": h["date"], "md": h["md"]} for h in kg_history], ensure_ascii=False))
     out.append("  },")
     out.append("")
     out.append("  // 理财：财经热点知识/progress.json")
@@ -188,8 +218,12 @@ def build(kg_dir, lc_dir, data_out):
     out.append("    progress: " + json.dumps(lc_progress, ensure_ascii=False) + ",")
     out.append("    levels: " + json.dumps(LC_LEVELS, ensure_ascii=False) + ",")
     out.append("    fund: " + json.dumps(funds, ensure_ascii=False) + ",")
-    out.append("    today_md: " + js_md_lit(lc_md_text))
-    out.append("  }")
+    out.append("    today_md: " + js_md_lit(lc_md_text) + ",")
+    out.append("    history_md: " + json.dumps([{"date": h["date"], "md": h["md"]} for h in lc_history], ensure_ascii=False))
+    out.append("  },")
+    out.append("")
+    out.append("  // 笔记：浏览器导出后落到 source/notes.json，云端嵌入后可跨设备同步")
+    out.append("  notes: " + json.dumps(notes, ensure_ascii=False))
     out.append("};")
     content = "\n".join(out) + "\n"
     with open(data_out, "w", encoding="utf-8") as f:
@@ -209,4 +243,4 @@ if __name__ == "__main__":
     kg_dir = a.kg_dir or os.environ.get("KG_DIR") or os.path.join(src, "kaogong")
     lc_dir = a.lc_dir or os.environ.get("LC_DIR") or os.path.join(src, "licai")
     data_out = a.out or os.environ.get("DATA_OUT") or DATA_OUT
-    build(kg_dir, lc_dir, data_out)
+    build(kg_dir, lc_dir, data_out, source_root=src)
