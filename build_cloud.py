@@ -55,6 +55,79 @@ def all_md_paths(track_dir):
     return [os.path.join(track_dir, f) for f in cands]
 
 
+def read_optional_file(path):
+    """读文件内容（不存在返回 None）。"""
+    if not os.path.isfile(path):
+        return None
+    try:
+        return open(path, encoding="utf-8").read()
+    except Exception:
+        return None
+
+
+def read_quiz_history(path):
+    """读答题记录 json + 计算累计统计。
+    返回 (quiz_history, stats)：
+      - quiz_history: list[dict]
+      - stats: {
+          total_quizzes, total_correct, total_wrong, total_questions,
+          accuracy_pct,                       // 整体正确率
+          wrong_by_module: [...],            // 各模块错题数
+          wrong_by_reason: {                  // 错题原因分布
+            "未掌握": N,
+            "知识点薄弱": N,
+            "粗心看错题": N
+          },
+          top_wrong_modules: [...],           // 高频错误模块（按错题数排序）
+          top_wrong_titles: [...],            // 高频错误知识点（按错题数排序）
+          last_quiz: {...},                   // 最近一次小测（用于"答题点评"）
+          cumulative: bool                    // 是否 ≥ 2 次（决定是否显示柱状图）
+        }
+    """
+    if not os.path.isfile(path):
+        return [], {"cumulative": False, "total_quizzes": 0}
+    try:
+        history = json.load(open(path, encoding="utf-8"))
+    except Exception:
+        return [], {"cumulative": False, "total_quizzes": 0}
+    if not isinstance(history, list) or not history:
+        return history or [], {"cumulative": False, "total_quizzes": 0}
+
+    total_quizzes = len(history)
+    total_questions = sum(h.get("total", 0) for h in history)
+    total_correct = sum(h.get("correct", 0) for h in history)
+    total_wrong = sum(len(h.get("wrong", [])) for h in history)
+    accuracy = round(100 * total_correct / total_questions, 1) if total_questions else 0
+
+    # 按模块累计错题
+    mod_wrong = {}
+    title_wrong = {}
+    reason_wrong = {}
+    for h in history:
+        for w in h.get("wrong", []):
+            mod = w.get("module", "未分类")
+            mod_wrong[mod] = mod_wrong.get(mod, 0) + 1
+            title = w.get("title", "")
+            title_wrong[title] = title_wrong.get(title, 0) + 1
+            reason = w.get("reason", "未标注")
+            reason_wrong[reason] = reason_wrong.get(reason, 0) + 1
+
+    stats = {
+        "total_quizzes": total_quizzes,
+        "total_questions": total_questions,
+        "total_correct": total_correct,
+        "total_wrong": total_wrong,
+        "accuracy_pct": accuracy,
+        "wrong_by_module": [{"module": m, "count": c} for m, c in sorted(mod_wrong.items(), key=lambda x: -x[1])],
+        "wrong_by_reason": reason_wrong,
+        "top_wrong_modules": [{"module": m, "count": c} for m, c in sorted(mod_wrong.items(), key=lambda x: -x[1])[:5]],
+        "top_wrong_titles": [{"title": t, "count": c} for t, c in sorted(title_wrong.items(), key=lambda x: -x[1])[:5]],
+        "last_quiz": history[-1] if history else None,
+        "cumulative": total_quizzes >= 2,
+    }
+    return history, stats
+
+
 def latest_md_path(track_dir):
     paths = all_md_paths(track_dir)
     return paths[-1] if paths else None
@@ -488,6 +561,11 @@ def build(kg_dir, lc_dir, data_out, source_root=None):
     kg_weekly = analyze_weekly(kg_history, kind="kaogong")
     lc_weekly = analyze_weekly(lc_history, kind="licai")
 
+    # 读取"本周知识要点.md" / "公考周末小测.md" / "本周小测答题记录.json"
+    weekly_summary_md = read_optional_file(os.path.join(kg_dir, "本周知识要点.md"))
+    weekly_quiz_md = read_optional_file(os.path.join(kg_dir, "公考周末小测.md"))
+    quiz_history, quiz_stats = read_quiz_history(os.path.join(kg_dir, "本周小测答题记录.json"))
+
     # 笔记：浏览器导出到 source/notes.json 即可跨设备同步
     notes = load_notes(source_root) if source_root else {}
 
@@ -505,12 +583,18 @@ def build(kg_dir, lc_dir, data_out, source_root=None):
     out.append("  kaogong: {")
     out.append("    progress: " + json.dumps(kg_progress, ensure_ascii=False) + ",")
     out.append("    modules: " + json.dumps(KG_MODULES, ensure_ascii=False) + ",")
-    out.append("    weakness: " + (js_md_lit(kg_weekly["review"]) if kg_weekly.get("review") else "null") + ",")
-    out.append("    weakness_modules: " + json.dumps(kg_weekly.get("weakness_modules", []), ensure_ascii=False) + ",")
-    out.append("    wrongbook: " + (js_md_lit("## 我的错题本\n\n周测互动上线后，做错的题会自动收录到这里。\n") if not kg_weekly.get("review") else "null") + ",")
-    out.append("    weekly_summary: " + (js_md_lit(kg_weekly["summary"]) if kg_weekly.get("summary") else "null") + ",")
-    out.append("    weekly_quiz: " + (js_md_lit(kg_weekly["quiz"]) if kg_weekly.get("quiz") else "null") + ",")
+    # 周末总结：直接显示 本周知识要点.md（自动化生成）；fallback 到 analyze_weekly 推导
+    out.append("    weekly_summary: " + (js_md_lit(weekly_summary_md) if weekly_summary_md else (js_md_lit(kg_weekly["summary"]) if kg_weekly.get("summary") else "null")) + ",")
     out.append("    weekly_range: " + json.dumps(kg_weekly.get("week_range"), ensure_ascii=False) + ",")
+    # 周末小测：直接读 公考周末小测.md
+    out.append("    weekly_quiz: " + (js_md_lit(weekly_quiz_md) if weekly_quiz_md else (js_md_lit(kg_weekly["quiz"]) if kg_weekly.get("quiz") else "null")) + ",")
+    # 错题本 + 周测分析 + 累计统计
+    out.append("    quiz_history: " + json.dumps(quiz_history, ensure_ascii=False) + ",")
+    out.append("    quiz_stats: " + json.dumps(quiz_stats, ensure_ascii=False) + ",")
+    # 兼容旧字段（前端可能用到 weakness / weakness_modules）
+    out.append("    weakness: null,")
+    out.append("    weakness_modules: " + json.dumps(quiz_stats.get("top_wrong_modules", []), ensure_ascii=False) + ",")
+    out.append("    wrongbook: null,")
     out.append("    today_md: " + js_md_lit(kg_md_text) + ",")
     out.append("    history_md: " + json.dumps([{"date": h["date"], "md": h["md"]} for h in kg_history], ensure_ascii=False))
     out.append("  },")
