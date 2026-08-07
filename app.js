@@ -409,83 +409,230 @@ return {
       kpHtml;
   }
 
-  /* -- Tab: 薄弱项 -- */
+  /* -- Tab: 薄弱项（已合并到周测分析 Tab；保留以避免 tab 找不到 renderer） -- */
   function renderKgWeak() {
-    var review = D.kaogong.weakness;
-    var mods = D.kaogong.weakness_modules || [];
-    if (review && (typeof review !== "string" || review.trim())) {
-      var modBadges = mods.length
-        ? '<div style="margin-bottom:var(--sp-3);">' +
-            mods.map(function (m) { return '<span class="sector-tag" style="background:rgba(225,109,118,.12);color:#c95b6b;">⚠ ' + esc(m) + '</span>'; }).join(" ") +
-          '</div>'
-        : '';
-      document.getElementById("kg-content").innerHTML =
-        '<div class="kg-card fade">' +
-          '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">🎯 本周易错提示</h3>' +
-          modBadges +
-          '<div class="md-rendered">' + mdToHtml(review) + '</div>' +
-        '</div>';
-    } else {
-      document.getElementById("kg-content").innerHTML =
-        '<div class="weak-empty fade">' +
-          '<div class="big-emoji">🎯</div>' +
-          '<p>还没有薄弱项记录哦～<br/>完成几次「周末小测」后，系统会自动分析你的薄弱模块并展示在这里。</p>' +
-          '<button class="action-btn" onclick="WB.navigate(\'kaogong\');WB.switchTab(\'kg\',\'kg-quiz\')">📊 去做周测</button>' +
-        '</div>';
-    }
+    document.getElementById("kg-content").innerHTML = "";
   }
 
-  /* -- Tab: 错题本 -- */
+  /* -- Tab: 错题本（联动周测结果 + 每题标知识点） -- */
   function renderKgWrong() {
-    if (D.kaogong.wrongbook && typeof D.kaogong.wrongbook === "string" && D.kaogong.wrongbook.trim()) {
-      document.getElementById("kg-content").innerHTML =
-        '<div class="kg-card fade">' +
-          '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">📝 我的错题本</h3>' +
-          '<div class="md-rendered">' + mdToHtml(D.kaogong.wrongbook) + '</div>' +
-        '</div>';
-    } else {
+    var history = D.kaogong.quiz_history || [];
+    var allWrong = [];
+    history.forEach(function (h) {
+      (h.wrong || []).forEach(function (w) {
+        allWrong.push(Object.assign({}, w, {
+          date: h.date,
+          week: h.week,
+          score: h.score
+        }));
+      });
+    });
+    if (allWrong.length === 0) {
       document.getElementById("kg-content").innerHTML =
         '<div class="wrong-empty fade">' +
           '<div class="big-emoji">📝</div>' +
-          '<p>错题本是空的～<br/>每次「周末小测」做错的题目都会自动收录到这里，方便你针对性复习。</p>' +
-          '<button class="action-btn" onclick="WB.navigate(\'kaogong\');WB.switchTab(\'kg\',\'kg-quiz\')">📊 去做周测</button>' +
+          '<p>错题本是空的～<br/>每周「周末小测」做错的题会自动收录到这里，错题上会标注对应知识点。</p>' +
+          '<p style="font-size:var(--fs-xs);color:var(--mist);margin-top:var(--sp-2);">💡 在 WorkBuddy 对话中回复「<b>开始小测</b>」即可作答</p>' +
         '</div>';
+      return;
     }
+    var cards = allWrong.map(function (w) {
+      var moduleTag = w.module
+        ? '<span class="sector-tag" style="background:rgba(225,109,118,.12);color:#c95b6b;margin-left:var(--sp-2);">📍 ' + esc(w.module) + '</span>'
+        : '';
+      var reasonTag = w.reason
+        ? '<span class="sector-tag" style="background:rgba(255,200,87,.15);color:#a07820;">❓ ' + esc(w.reason) + '</span>'
+        : '';
+      return '<div class="wrong-card fade">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">' +
+          '<div style="font-size:var(--fs-xs);color:var(--mist);">' +
+            esc(w.date || "") + (w.week ? " · " + esc(w.week) : "") +
+          '</div>' +
+          '<div style="font-family:var(--mono);font-size:var(--fs-xs);color:var(--mist);">得分 ' + esc(w.score || "—") + '</div>' +
+        '</div>' +
+        '<div class="wrong-title" style="margin-top:6px;">' +
+          '第 ' + esc(String(w.q_idx || "?")) + ' 题 · ' + esc(w.title || "未命名") +
+          moduleTag +
+        '</div>' +
+        '<div style="margin-top:6px;font-size:var(--fs-xs);color:var(--mist);">' +
+            '你选 <span style="color:#c95b6b;font-weight:600;">' + esc(w.user_answer || "—") + '</span>' +
+            ' · 正确答案 <span style="color:#3a7a4d;font-weight:600;">' + esc(w.correct_answer || "—") + '</span>' +
+            (reasonTag ? " " + reasonTag : "") +
+        '</div>' +
+      '</div>';
+    }).join("");
+    document.getElementById("kg-content").innerHTML =
+      '<div class="weekly-toolbar">' +
+        '<span class="toolbar-label">📝 共 ' + allWrong.length + ' 道错题（来自 ' + history.length + ' 次小测）</span>' +
+      '</div>' +
+      cards;
   }
 
-  /* -- Tab: 周测分析 -- */
+  /* -- Tab: 周测分析（折叠题回顾 + 答题点评 + 累计柱状图 + 薄弱项） -- */
   function renderKgQuiz() {
-    var quiz = D.kaogong.weekly_quiz;
-    var summary = D.kaogong.weekly_summary;
-    var range = D.kaogong.weekly_range;
-    var rangeTag = (range && range.length === 2)
-      ? '<span class="sector-tag" style="background:var(--kg-bg);color:var(--kg-accent);">' + esc(range[0]) + ' ~ ' + esc(range[1]) + '</span>'
-      : '';
-    if (quiz && typeof quiz === "string" && quiz.trim()) {
-      document.getElementById("kg-content").innerHTML =
-        '<div class="kg-card fade">' +
-          '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">📊 本周真题回顾</h3>' +
-          rangeTag +
-          '<div class="md-rendered">' + mdToHtml(quiz) + '</div>' +
-        '</div>' +
-        (summary
-          ? '<div class="kg-card fade" style="margin-top:var(--sp-3);">' +
-              '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">📚 本周知识索引</h3>' +
-              '<div class="md-rendered">' + mdToHtml(summary) + '</div>' +
-            '</div>'
-          : '');
+    var stats = D.kaogong.quiz_stats || {};
+    var last = stats.last_quiz;
+    var history = D.kaogong.quiz_history || [];
+    var weeklyQuizMd = D.kaogong.weekly_quiz;
+
+    // 1. 周测题回顾（可折叠）
+    var quizSection = "";
+    if (weeklyQuizMd) {
+      var qm = weeklyQuizMd.match(/共\s*(\d+)\s*题/);
+      var qcount = qm ? qm[1] : "?";
+      quizSection =
+        '<div class="kg-card fade" style="margin-bottom:var(--sp-3);">' +
+          '<details class="quiz-details">' +
+            '<summary>📝 本周小测回顾（共 ' + qcount + ' 题）· 点击展开</summary>' +
+            '<div class="md-rendered" style="margin-top:var(--sp-3);">' + mdToHtml(weeklyQuizMd) + '</div>' +
+          '</details>' +
+        '</div>';
     } else {
-      document.getElementById("kg-content").innerHTML =
-        '<div class="quiz-empty fade">' +
-          '<div class="big-emoji">📊</div>' +
-          '<p>周测统计还在等你～<br/>每周六晚上会自动触发「周末小测」，完成后这里会展示正确率、用时、薄弱维度等分析图表。</p>' +
-          '<div class="cta" style="margin-top:var(--sp-3);text-align:left;border-radius:var(--radius-sm);padding:var(--sp-4);">' +
-            '<b>💡 如何开始？</b><br/>' +
-            '在 WorkBuddy 对话中回复 <b>「开始小测」</b>，即可逐题作答。<br/>' +
-            '收齐 10 题后当场打分、逐题解析，并自动更新薄弱项与错题本。' +
-          '</div>' +
+      quizSection =
+        '<div class="quiz-empty fade" style="margin-bottom:var(--sp-3);">' +
+          '<div class="big-emoji">📝</div>' +
+          '<p>本周小测尚未发布。周六晚上由「公考周末小测」自动化生成。</p>' +
         '</div>';
     }
+
+    // 2. 答题点评
+    var feedbackSection = "";
+    if (last) {
+      var lastWrong = last.wrong || [];
+      var isAllCorrect = lastWrong.length === 0;
+      var lastHeader = isAllCorrect
+        ? '<span class="sector-tag" style="background:rgba(58,122,77,.15);color:#3a7a4d;">🟢 全对</span>'
+        : '<span class="sector-tag" style="background:rgba(225,109,118,.12);color:#c95b6b;">🔴 ' + esc(last.score || "") + '</span>';
+      var lastTitle = "最近一次小测 · " + esc(last.date || "") + " · " + esc(last.week || "");
+      var wrongListHtml = "";
+      if (lastWrong.length > 0) {
+        var reasonCount = {};
+        lastWrong.forEach(function (w) {
+          var r = w.reason || "未标注";
+          reasonCount[r] = (reasonCount[r] || 0) + 1;
+        });
+        var reasonHtml = Object.keys(reasonCount).map(function (r) {
+          return '<span class="reason-chip">' + esc(r) + " · " + reasonCount[r] + " 题</span>";
+        }).join("");
+        wrongListHtml =
+          '<div class="wrong-summary">' +
+            '<div style="margin-top:var(--sp-2);font-size:var(--fs-xs);color:var(--mist);">错题原因：</div>' +
+            '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">' + reasonHtml + '</div>' +
+            '<div style="margin-top:var(--sp-2);">' +
+              lastWrong.map(function (w) {
+                return '<div class="wrong-line">' +
+                  "第 " + esc(String(w.q_idx)) + " 题 <b>" + esc(w.title) + "</b>" +
+                  "（" + esc(w.module) + "）" +
+                  ' · 你选 <span style="color:#c95b6b;">' + esc(w.user_answer) + '</span>' +
+                  ' · 正答 <span style="color:#3a7a4d;">' + esc(w.correct_answer) + '</span>' +
+                  "</div>";
+              }).join("") +
+            "</div>" +
+            '<div class="cta" style="margin-top:var(--sp-3);background:rgba(255,200,87,.08);border-left:3px solid #f0b400;">' +
+              "<b>💡 错题原因记录</b><br/>" +
+              "每道错题都可以单独标记原因，下次「答题点评」会更精准。" +
+              '<div style="margin-top:var(--sp-2);font-size:var(--fs-xs);color:var(--mist);">（当前 demo 数据是预填原因；正式使用后你可以在 WorkBuddy 对话里给每题选「未掌握 / 知识点薄弱 / 粗心看错题」）</div>' +
+            "</div>" +
+          "</div>";
+      }
+      feedbackSection =
+        '<div class="kg-card fade" style="margin-bottom:var(--sp-3);">' +
+          '<div style="display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-2);">' +
+            lastHeader +
+            '<span style="font-size:var(--fs-md);font-weight:600;">📊 答题点评</span>' +
+            '<span style="font-size:var(--fs-xs);color:var(--mist);">' + lastTitle + '</span>' +
+          "</div>" +
+          '<div class="md-rendered">' +
+            (isAllCorrect
+              ? "<p><b>🎉 全对！</b>恭喜你对本周考点掌握得很扎实。</p>" +
+                "<p>" + esc(last.feedback || "建议把本周涉及的模块口诀再过一遍，巩固印象。") + "</p>"
+              : esc(last.feedback || "")) +
+          "</div>" +
+          wrongListHtml +
+        "</div>";
+    } else if (history.length === 0) {
+      feedbackSection =
+        '<div class="kg-card fade" style="margin-bottom:var(--sp-3);">' +
+          '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">📊 答题点评</h3>' +
+          '<p style="color:var(--mist);">还没有小测记录。在 WorkBuddy 对话中回复「<b>开始小测</b>」即可作答。</p>' +
+        "</div>";
+    }
+
+    // 3. 累计统计（>= 2 次才显示柱状图）
+    var cumulativeSection = "";
+    if (stats.cumulative) {
+      var modBars = (stats.wrong_by_module || []).map(function (m) {
+        var pct = stats.total_wrong ? Math.round(100 * m.count / stats.total_wrong) : 0;
+        return '<div class="bar-row">' +
+          '<div class="bar-label">' + esc(m.module) + '</div>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;">' + m.count + '</div></div>' +
+          "</div>";
+      }).join("");
+      var reasonBars = Object.keys(stats.wrong_by_reason || {}).map(function (r) {
+        var c = stats.wrong_by_reason[r];
+        var pct = stats.total_wrong ? Math.round(100 * c / stats.total_wrong) : 0;
+        return '<div class="bar-row">' +
+          '<div class="bar-label">' + esc(r) + '</div>' +
+          '<div class="bar-track"><div class="bar-fill reason" style="width:' + pct + '%;">' + c + '</div></div>' +
+          "</div>";
+      }).join("");
+      cumulativeSection =
+        '<div class="kg-card fade" style="margin-bottom:var(--sp-3);">' +
+          '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">📈 累计统计（' + stats.total_quizzes + ' 次小测）</h3>' +
+          '<div style="display:flex;gap:var(--sp-3);flex-wrap:wrap;margin-bottom:var(--sp-3);">' +
+            statBlock("总题数", stats.total_questions) +
+            statBlock("总正确", stats.total_correct, "#3a7a4d") +
+            statBlock("总错误", stats.total_wrong, "#c95b6b") +
+            statBlock("正确率", stats.accuracy_pct + "%", stats.accuracy_pct >= 80 ? "#3a7a4d" : (stats.accuracy_pct >= 60 ? "#a07820" : "#c95b6b")) +
+          "</div>" +
+          '<div style="font-size:var(--fs-sm);color:var(--mist);margin-bottom:4px;">🔴 错题按模块分布（共 ' + stats.total_wrong + ' 道）</div>' +
+          (modBars || '<div style="color:var(--mist);font-size:var(--fs-xs);">还没有错题记录</div>') +
+          '<div style="font-size:var(--fs-sm);color:var(--mist);margin:var(--sp-3) 0 4px;">🟡 错题按原因分布</div>' +
+          (reasonBars || '<div style="color:var(--mist);font-size:var(--fs-xs);">暂无原因标注</div>') +
+        "</div>";
+    } else if (history.length === 1) {
+      cumulativeSection =
+        '<div class="kg-card fade" style="margin-bottom:var(--sp-3);">' +
+          '<div style="font-size:var(--fs-sm);color:var(--mist);">完成 2 次及以上小测后，会出现累计柱状图与薄弱项分析。</div>' +
+        "</div>";
+    }
+
+    // 4. 薄弱项（高频错误知识点）
+    var weaknessSection = "";
+    if (stats.cumulative && stats.top_wrong_titles && stats.top_wrong_titles.length > 0) {
+      var titleList = stats.top_wrong_titles.map(function (t, i) {
+        return '<div class="weakness-item">' +
+          '<span class="weakness-rank">' + (i+1) + '</span>' +
+          '<span class="weakness-text">' + esc(t.title) + '</span>' +
+          '<span class="weakness-count">错 ' + t.count + ' 次</span>' +
+          "</div>";
+      }).join("");
+      weaknessSection =
+        '<div class="kg-card fade">' +
+          '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">🎯 高频错误知识点（薄弱项）</h3>' +
+          '<div style="font-size:var(--fs-xs);color:var(--mist);margin-bottom:var(--sp-2);">来自 ' + stats.total_quizzes + ' 次小测、' + stats.total_wrong + ' 道错题的累计</div>' +
+          titleList +
+        "</div>";
+    } else if (stats.cumulative && (!stats.top_wrong_titles || !stats.top_wrong_titles.length)) {
+      weaknessSection =
+        '<div class="kg-card fade">' +
+          '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">🎯 高频错误知识点</h3>' +
+          '<div style="color:var(--mist);font-size:var(--fs-sm);">✅ 累计 ' + stats.total_quizzes + ' 次小测无错题，没有薄弱项。</div>' +
+        "</div>";
+    }
+
+    document.getElementById("kg-content").innerHTML =
+      quizSection +
+      feedbackSection +
+      cumulativeSection +
+      weaknessSection;
+  }
+
+  function statBlock(label, val, color) {
+    return '<div class="stat-mini" style="' + (color ? "border-color:" + color + ";" : "") + '">' +
+      '<div style="font-family:var(--mono);font-size:var(--fs-lg);font-weight:600;' + (color ? "color:" + color + ";" : "") + '">' + val + '</div>' +
+      '<div style="font-size:var(--fs-xs);color:var(--mist);margin-top:2px;">' + label + '</div>' +
+    "</div>";
   }
 
   /* -- Tab: 周末总结（考公）-- */
