@@ -19,6 +19,61 @@
     var j = s.indexOf(b, from); return j < 0 ? s.slice(from) : s.slice(from, j);
   }
   function clean(t) { return (t || "").replace(/\*\*/g, "").replace(/\s*\n+\s*/g, " ").trim(); }
+
+  // 轻量级 markdown → HTML（仅支持周总结/周测/薄弱项里用到的子集）
+  function mdToHtml(md) {
+    if (!md || typeof md !== "string") return "";
+    var lines = md.split("\n");
+    var out = [];
+    var inList = false;
+    var inOl = false;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var trimmed = line.trim();
+      // 标题
+      var hm = /^(#{1,4})\s+(.+)$/.exec(trimmed);
+      if (hm) {
+        if (inList) { out.push("</ul>"); inList = false; }
+        if (inOl) { out.push("</ol>"); inOl = false; }
+        var lvl = hm[1].length;
+        out.push("<h" + lvl + " style=\"margin:var(--sp-3) 0 var(--sp-2);font-weight:600;color:var(--kg-accent);\">" + inlineMd(hm[2]) + "</h" + lvl + ">");
+        continue;
+      }
+      // 无序列表
+      if (/^[-*]\s+/.test(trimmed)) {
+        if (!inList) { out.push("<ul style=\"margin:var(--sp-2) 0;padding-left:1.4em;\">"); inList = true; }
+        if (inOl) { out.push("</ol>"); inOl = false; }
+        out.push("<li>" + inlineMd(trimmed.replace(/^[-*]\s+/, "")) + "</li>");
+        continue;
+      }
+      // 有序列表
+      if (/^\d+\.\s+/.test(trimmed)) {
+        if (!inOl) { out.push("<ol style=\"margin:var(--sp-2) 0;padding-left:1.6em;\">"); inOl = true; }
+        if (inList) { out.push("</ul>"); inList = false; }
+        out.push("<li>" + inlineMd(trimmed.replace(/^\d+\.\s+/, "")) + "</li>");
+        continue;
+      }
+      // 空行
+      if (trimmed === "") {
+        if (inList) { out.push("</ul>"); inList = false; }
+        if (inOl) { out.push("</ol>"); inOl = false; }
+        continue;
+      }
+      // 普通段落
+      if (inList) { out.push("</ul>"); inList = false; }
+      if (inOl) { out.push("</ol>"); inOl = false; }
+      out.push("<p style=\"margin:var(--sp-2) 0;line-height:1.65;\">" + inlineMd(trimmed) + "</p>");
+    }
+    if (inList) out.push("</ul>");
+    if (inOl) out.push("</ol>");
+    return out.join("");
+  }
+  function inlineMd(s) {
+    s = esc(s);
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+    s = s.replace(/`([^`]+)`/g, "<code style=\"background:var(--kg-bg);padding:0 4px;border-radius:3px;font-family:var(--mono);font-size:0.92em;\">$1</code>");
+    return s;
+  }
   function bullet(s, key) {
     var re = new RegExp("\\*\\*[^\\n]*?" + key + "[^\\n]*?\\*\\*：([^\\n]*)");
     var m = s.match(re); return m ? m[1].trim() : "";
@@ -356,10 +411,20 @@ return {
 
   /* -- Tab: 薄弱项 -- */
   function renderKgWeak() {
-    if (D.kaogong.weakness) {
-      // TODO: 有数据时渲染薄弱项详情
+    var review = D.kaogong.weakness;
+    var mods = D.kaogong.weakness_modules || [];
+    if (review && (typeof review !== "string" || review.trim())) {
+      var modBadges = mods.length
+        ? '<div style="margin-bottom:var(--sp-3);">' +
+            mods.map(function (m) { return '<span class="sector-tag" style="background:rgba(225,109,118,.12);color:#c95b6b;">⚠ ' + esc(m) + '</span>'; }).join(" ") +
+          '</div>'
+        : '';
       document.getElementById("kg-content").innerHTML =
-        '<div class="kg-card fade"><p>薄弱项数据待渲染</p></div>';
+        '<div class="kg-card fade">' +
+          '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">🎯 本周易错提示</h3>' +
+          modBadges +
+          '<div class="md-rendered">' + mdToHtml(review) + '</div>' +
+        '</div>';
     } else {
       document.getElementById("kg-content").innerHTML =
         '<div class="weak-empty fade">' +
@@ -372,9 +437,12 @@ return {
 
   /* -- Tab: 错题本 -- */
   function renderKgWrong() {
-    if (D.kaogong.wrongbook) {
+    if (D.kaogong.wrongbook && typeof D.kaogong.wrongbook === "string" && D.kaogong.wrongbook.trim()) {
       document.getElementById("kg-content").innerHTML =
-        '<div class="kg-card fade"><p>错题本数据待渲染</p></div>';
+        '<div class="kg-card fade">' +
+          '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">📝 我的错题本</h3>' +
+          '<div class="md-rendered">' + mdToHtml(D.kaogong.wrongbook) + '</div>' +
+        '</div>';
     } else {
       document.getElementById("kg-content").innerHTML =
         '<div class="wrong-empty fade">' +
@@ -387,9 +455,25 @@ return {
 
   /* -- Tab: 周测分析 -- */
   function renderKgQuiz() {
-    if (D.kaogong.weekly_quiz) {
+    var quiz = D.kaogong.weekly_quiz;
+    var summary = D.kaogong.weekly_summary;
+    var range = D.kaogong.weekly_range;
+    var rangeTag = (range && range.length === 2)
+      ? '<span class="sector-tag" style="background:var(--kg-bg);color:var(--kg-accent);">' + esc(range[0]) + ' ~ ' + esc(range[1]) + '</span>'
+      : '';
+    if (quiz && typeof quiz === "string" && quiz.trim()) {
       document.getElementById("kg-content").innerHTML =
-        '<div class="kg-card fade"><p>周测分析数据待渲染</p></div>';
+        '<div class="kg-card fade">' +
+          '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">📊 本周真题回顾</h3>' +
+          rangeTag +
+          '<div class="md-rendered">' + mdToHtml(quiz) + '</div>' +
+        '</div>' +
+        (summary
+          ? '<div class="kg-card fade" style="margin-top:var(--sp-3);">' +
+              '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">📚 本周知识索引</h3>' +
+              '<div class="md-rendered">' + mdToHtml(summary) + '</div>' +
+            '</div>'
+          : '');
     } else {
       document.getElementById("kg-content").innerHTML =
         '<div class="quiz-empty fade">' +
@@ -406,15 +490,16 @@ return {
 
   /* -- Tab: 周末总结（考公）-- */
   function renderKgWeekly() {
-    var rows = kgHistory.slice(-7).reverse();
-    var hasNote = Object.keys(notesAll).some(function (k) {
-      return k.indexOf("kaogong::") === 0 && notesAll[k] && notesAll[k].trim();
-    });
+    var summary = D.kaogong.weekly_summary;
+    var range = D.kaogong.weekly_range;
+    var rangeTag = (range && range.length === 2)
+      ? '<span class="sector-tag" style="background:var(--kg-bg);color:var(--kg-accent);">本周 ' + esc(range[0]) + ' ~ ' + esc(range[1]) + '</span>'
+      : '';
 
-    if (!rows.length) {
+    if (!summary) {
       document.getElementById("kg-content").innerHTML =
         '<div class="weekly-empty fade"><div class="big-emoji">🗓️</div>' +
-        '<p>暂无历史数据。等 12:30 推送累计几天后，这里会显示过去 7 天的考点 + 笔记。</p></div>';
+        '<p>暂无历史数据。等 12:30 推送累计几天后，这里会显示本周总结。</p></div>';
       return;
     }
 
@@ -422,33 +507,17 @@ return {
       return k.indexOf("kaogong::") === 0 && notesAll[k] && notesAll[k].trim();
     }).length;
 
-    var cards = rows.map(function (row) {
-      var d = row.parsed;
-      var isToday = row.date === D.snapshot_date;
-      var topics = (d.points || []).map(function (p, idx) {
-        var noteH = noteDisplayHtml("kaogong", row.date, idx);
-        return '<div class="weekly-topic">' +
-          '<div class="weekly-topic-title">' + (idx+1) + '. ' + esc(p.title) + '</div>' +
-          (p.jiangjie ? '<div class="weekly-topic-explain">📌 ' + esc(p.jiangjie) + '</div>' : '') +
-          (p.koujue ? '<div class="weekly-topic-explain" style="margin-top:2px;">🧠 ' + esc(p.koujue) + '</div>' : '') +
-          noteH +
-        '</div>';
-      }).join("");
-      return '<div class="weekly-day-card fade">' +
-        '<div class="weekly-day-header">' +
-          '<span class="weekly-day-date">' + esc(row.date) + (isToday ? '（今天）' : '') + '</span>' +
-          '<span class="weekly-day-meta">' + esc(d.moduleName) + ' · DAY ' + d.day + '</span>' +
-        '</div>' +
-        (topics || '<div class="weekly-topic-explain">— 无知识点 —</div>') +
-      '</div>';
-    }).join("");
-
     document.getElementById("kg-content").innerHTML =
       '<div class="weekly-toolbar">' +
-        '<span class="toolbar-label">过去 7 天 · 共 ' + rows.length + ' 天 · 已写 ' + noteCount + ' 条笔记</span>' +
+        '<span class="toolbar-label">' + rangeTag + ' 已写 ' + noteCount + ' 条笔记</span>' +
         '<button onclick="WB.exportNotes()">📥 导出笔记 JSON</button>' +
       '</div>' +
-      cards;
+      '<div class="kg-card fade">' +
+        '<div class="md-rendered">' + mdToHtml(summary) + '</div>' +
+      '</div>' +
+      '<div style="margin-top:var(--sp-3);font-size:var(--fs-xs);color:var(--mist);text-align:right;">' +
+        '📅 想看某一天的具体内容？切到「知识考点」Tab 选日期 ↓' +
+      '</div>';
   }
 
   /* 考公 tab 分发 */
@@ -556,46 +625,42 @@ return {
 
   /* -- Tab: 周末总结（理财）-- */
   function renderLcWeekly() {
-    var rows = lcHistory.slice(-7).reverse();
+    var summary = D.licai.weekly_summary;
+    var hot = D.licai.weekly_hot;
+    var range = D.licai.weekly_range;
+    var rangeTag = (range && range.length === 2)
+      ? '<span class="sector-tag" style="background:var(--lc-bg);color:var(--lc-accent);">本周 ' + esc(range[0]) + ' ~ ' + esc(range[1]) + '</span>'
+      : '';
+
+    if (!summary && !hot) {
+      document.getElementById("lc-content").innerHTML =
+        '<div class="weekly-empty fade"><div class="big-emoji">🗓️</div>' +
+        '<p>暂无历史数据。等 12:30 推送累计几天后，这里会显示本周总结。</p></div>';
+      return;
+    }
+
     var noteCount = Object.keys(notesAll).filter(function (k) {
       return k.indexOf("licai::") === 0 && notesAll[k] && notesAll[k].trim();
     }).length;
 
-    if (!rows.length) {
-      document.getElementById("lc-content").innerHTML =
-        '<div class="weekly-empty fade"><div class="big-emoji">🗓️</div>' +
-        '<p>暂无历史数据。等 12:30 推送累计几天后，这里会显示过去 7 天的热点 + 知识 + 笔记。</p></div>';
-      return;
-    }
-
-    var cards = rows.map(function (row) {
-      var d = row.parsed;
-      var isToday = row.date === D.snapshot_date;
-      var noteH = noteDisplayHtml("licai", row.date, 0);
-      return '<div class="weekly-day-card fade">' +
-        '<div class="weekly-day-header">' +
-          '<span class="weekly-day-date">' + esc(row.date) + (isToday ? '（今天）' : '') + '</span>' +
-          '<span class="weekly-day-meta">' + esc(d.knowLevel || "—") + '</span>' +
-        '</div>' +
-        '<div class="weekly-topic">' +
-          '<div class="weekly-topic-title">🔥 ' + esc(d.hotTitle || "—") + '</div>' +
-          '<div class="weekly-topic-explain">📰 ' + esc(d.hotSrc || "—") + '</div>' +
-        '</div>' +
-        '<div class="weekly-topic">' +
-          '<div class="weekly-topic-title">📚 ' + esc(d.knowName || "—") + '</div>' +
-          (d.dabai ? '<div class="weekly-topic-explain">大白话：' + esc(d.dabai) + '</div>' : '') +
-          (d.biyu ? '<div class="weekly-topic-explain">比喻：' + esc(d.biyu) + '</div>' : '') +
-        '</div>' +
-        noteH +
-      '</div>';
-    }).join("");
-
     document.getElementById("lc-content").innerHTML =
       '<div class="weekly-toolbar">' +
-        '<span class="toolbar-label">过去 7 天 · 共 ' + rows.length + ' 天 · 已写 ' + noteCount + ' 条笔记</span>' +
+        '<span class="toolbar-label">' + rangeTag + ' 已写 ' + noteCount + ' 条笔记</span>' +
         '<button class="primary" onclick="WB.exportNotes()">📥 导出笔记 JSON</button>' +
       '</div>' +
-      cards;
+      (hot
+        ? '<div class="lc-card fade">' +
+            '<div class="md-rendered">' + mdToHtml(hot) + '</div>' +
+          '</div>'
+        : '') +
+      (summary
+        ? '<div class="lc-card fade" style="margin-top:var(--sp-3);">' +
+            '<div class="md-rendered">' + mdToHtml(summary) + '</div>' +
+          '</div>'
+        : '') +
+      '<div style="margin-top:var(--sp-3);font-size:var(--fs-xs);color:var(--mist);text-align:right;">' +
+        '📅 想看某一天的具体内容？切到「今日知识」Tab ↓' +
+      '</div>';
   }
 
   /* 理财 tab 分发 */
