@@ -661,6 +661,15 @@ body {
 .weekly-toolbar button.primary:hover { opacity: .9; }
 .lc-content .weekly-toolbar button.primary { background: var(--lc-accent); border-color: var(--lc-accent); }
 
+/* markdown 渲染容器（周总结 / 周测 / 薄弱项） */
+.md-rendered { font-size: var(--fs-sm); line-height: 1.7; color: var(--ink); }
+.md-rendered h1 { font-size: var(--fs-lg); margin-top: 0; }
+.md-rendered h2 { font-size: var(--fs-md); }
+.md-rendered h3 { font-size: 1.05em; }
+.md-rendered h4 { font-size: 1em; color: var(--mist); }
+.md-rendered ul li, .md-rendered ol li { margin: 2px 0; }
+.md-rendered code { font-size: 0.92em; }
+
 /* 笔记浮窗提示 */
 .toast {
   position: fixed;
