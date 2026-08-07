@@ -151,6 +151,301 @@ def js_md_lit(s):
     return "`" + s.rstrip("\n") + "`"
 
 
+# ─────────────────────────────────────────────────────────────
+# 自动分析：薄弱项、周测真题、周总结
+# ─────────────────────────────────────────────────────────────
+
+# 简易模块识别：用 progress.json 的 last_module + recent_topics 推断
+# 由于历史 md 已包含完整模块标识（## 知识点 N：xxx），可解析更准
+_KG_MODULE_PATTERNS = [
+    ("政治", r"政治|党的|中央|二十大|三中全会|时政|政府工作报告|总书记|国务院"),
+    ("法律", r"法律|民法|刑法|宪法|行政法|诉讼法|法条|司法|法院|检察|正当防卫|诉讼时效"),
+    ("经济", r"经济|货币|财政|通胀|通缩|GDP|央行|美联储|利率|汇率|PMI|恩格尔|基尼"),
+    ("人文历史", r"历史|文学|艺术|诗词|文物|非遗|遗产|唐宋|古代|文化|名著"),
+    ("科技与生活", r"科技|生活|医学|健康|生物|化学|物理|天文|地理常识|生活常识|安全"),
+    ("地理国情", r"地理|国情|国土|河流|山脉|气候|行政区|省份|城市|海洋"),
+    ("管理公文", r"管理|公文|行文|格式|通知|请示|报告|函|决定"),
+]
+
+
+def detect_kg_module(text):
+    """从每日 md 中识别今日模块。"""
+    # 优先看标题行 "今日模块：X"
+    m = re.search(r"今日模块[：:]\s*([①②③④⑤⑥⑦\d]+)?\s*([^(\n]+)", text)
+    if m:
+        cat = m.group(2).strip()
+        # 直接匹配模块名
+        for mod, _ in _KG_MODULE_PATTERNS:
+            if cat.startswith(mod):
+                return mod
+        # 处理 "人文历史（day 11 · 第 2 轮人文历史）" 这类
+        cat_clean = re.sub(r"[（(].*$", "", cat).strip()
+        for mod, _ in _KG_MODULE_PATTERNS:
+            if mod in cat_clean or cat_clean in mod:
+                return mod
+    # 兜底：用关键词
+    for mod, pat in _KG_MODULE_PATTERNS:
+        if re.search(pat, text[:600]):
+            return mod
+    return "未识别"
+
+
+_KG_POINT_RE = re.compile(r"### 知识点\s*\d+\s*[:：]\s*([^\n]+)")
+_KG_EXPLAIN_RE = re.compile(r"📌 \*\*讲解\*\*[：:]?\s*([^\n]+(?:\n(?![🧠📝✅🔍#\n]).*)*)")
+_KG_MNEMONIC_RE = re.compile(r"🧠 \*\*口诀\*\*[：:]?\s*([^\n]+(?:\n(?![📝✅🔍#]).*)*)")
+_KG_QUES_RE = re.compile(r"📝 \*\*真题\*\*[^\n]*\n> ([^\n]+)\n> ([^\n]+)\n> ([^\n]+)\n> ([^\n]+)\n> ([^\n]+)")
+_KG_ANS_RE = re.compile(r"✅ \*\*答案\*\*[：:]?\s*([^\n]+)")
+_KG_SRC_RE = re.compile(r"📝 \*\*真题\*\*[（(]([^）)]+)[）)]")
+
+
+def parse_kg_md(text):
+    """从每日 md 抽出每个知识点的标题/讲解/口诀/真题/答案/来源。"""
+    points = []
+    # 按 "### 知识点" 分割
+    chunks = re.split(r"### 知识点\s*\d+", text)
+    for chunk in chunks[1:]:
+        # 标题在第一行
+        title_m = re.match(r"\s*[:：]\s*([^\n]+)", chunk)
+        if not title_m:
+            title_m = re.match(r"\s*([^\n]+)", chunk)
+        if not title_m:
+            continue
+        title = title_m.group(1).strip()
+        # 来源
+        src_m = _KG_SRC_RE.search(chunk[:300])
+        src = src_m.group(1).strip() if src_m else ""
+        # 答案
+        ans_m = _KG_ANS_RE.search(chunk)
+        ans = ans_m.group(1).strip() if ans_m else ""
+        # 真题题干 + 选项（取 📝 块第一组）
+        ques_m = _KG_QUES_RE.search(chunk)
+        if ques_m:
+            q = ques_m.group(1).strip()
+            opts = [ques_m.group(i).strip() for i in (2, 3, 4, 5)]
+        else:
+            q = ""
+            opts = []
+        points.append({"title": title, "src": src, "ans": ans, "q": q, "opts": opts})
+    return points
+
+
+_LC_HOT_RE = re.compile(r"##\s*🔥 今日热点[^\n]*\n(.+?)(?=\n##\s|\Z)", re.S)
+_LC_KNOW_RE = re.compile(r"##\s*📚 今日知识[：:]\s*([^\n]+)\n[（(]([^）)]+)[）)]")
+_LC_KNOW_BODY_RE = re.compile(r"##\s*📚 今日知识[^\n]*\n(.+?)(?=\n##\s|\Z)", re.S)
+_LC_DABAI_RE = re.compile(r"📌 \*\*一句人话\*\*[：:]?\s*([^\n]+(?:\n(?![🍎💡]).*)*)")
+_LC_TIP_RE = re.compile(r"##\s*💬 小白提示\s*\n([^\n]+)")
+
+
+def parse_lc_md(text):
+    """从每日 md 抽出热点标题/来源/影响 + 知识概念/层/大白话/小白提示。"""
+    hot_m = _LC_HOT_RE.search(text)
+    hot_body = hot_m.group(1) if hot_m else ""
+    # 事件行：**事件**：...
+    ev_m = re.search(r"\*\*事件\*\*[：:]\s*([^\n]+)", hot_body)
+    src_m = re.search(r"\*\*来源\*\*[：:]\s*([^\n]+)", hot_body)
+    # 知识概念
+    know_m = _LC_KNOW_RE.search(text)
+    know_name = know_m.group(1).strip() if know_m else ""
+    know_level = know_m.group(2).strip() if know_m else ""
+    # 大白话
+    dabai_m = _LC_DABAI_RE.search(text)
+    dabai = dabai_m.group(1).strip() if dabai_m else ""
+    # 小白提示
+    tip_m = _LC_TIP_RE.search(text)
+    tip = tip_m.group(1).strip() if tip_m else ""
+    return {
+        "hot_event": ev_m.group(1).strip() if ev_m else "",
+        "hot_src": src_m.group(1).strip() if src_m else "",
+        "know_name": know_name,
+        "know_level": know_level,
+        "dabai": dabai,
+        "tip": tip,
+    }
+
+
+def week_bounds(history):
+    """从 history_md 列表算出最近一个完整的"自然周"（周一到周日）。返回该周内所有条目。
+    若没有完整一周，则取最近 7 天。"""
+    if not history:
+        return [], []
+    dates = sorted([h["date"] for h in history])
+    last = datetime.date.fromisoformat(dates[-1])
+    # 该周一是 last - (last.weekday())；weekday() 周一=0
+    week_start = last - datetime.timedelta(days=last.weekday())
+    week_end = week_start + datetime.timedelta(days=6)
+    this_week = [h for h in history if week_start.isoformat() <= h["date"] <= week_end.isoformat()]
+    if len(this_week) >= 3:
+        # 至少 3 天才算"本周"
+        return this_week, []
+    # 不足则取最近 7 天为窗口
+    recent = history[-7:]
+    return recent, []
+
+
+def analyze_weekly(history, kind="kaogong"):
+    """返回 weekly_summary / weekly_quiz / weekly_review（考公）
+    或 weekly_summary / weekly_hot（理财）。"""
+    if kind == "kaogong":
+        return _analyze_kg_weekly(history)
+    return _analyze_lc_weekly(history)
+
+
+def _analyze_kg_weekly(history):
+    this_week, _ = week_bounds(history)
+    if not this_week:
+        return {"summary": None, "quiz": None, "review": None, "week_range": None}
+    week_start = this_week[0]["date"]
+    week_end = this_week[-1]["date"]
+
+    # 模块分布
+    module_count = {}
+    all_points = []
+    for h in this_week:
+        mod = detect_kg_module(h["md"])
+        module_count[mod] = module_count.get(mod, 0) + 1
+        pts = parse_kg_md(h["md"])
+        for p in pts:
+            p["date"] = h["date"]
+            p["module"] = mod
+            all_points.append(p)
+    # 模块排序
+    mods_sorted = sorted(module_count.items(), key=lambda x: -x[1])
+    covered_mods = [m for m, _ in mods_sorted]
+
+    # ── 薄弱项：基于覆盖度 = 出现 0 次的模块 + 出现 1 次的模块（频率最低）
+    all_modules = [m for m, _ in _KG_MODULE_PATTERNS]
+    weakness_modules = [m for m in all_modules if m not in module_count]
+    # 出现 1 次且非最近的也算薄弱
+    weak_1x = [m for m, c in module_count.items() if c == 1]
+    weakness_list = weakness_modules + weak_1x
+    # 限 3 个
+    weakness_list = weakness_list[:3]
+
+    # ── 周总结：模块分布 + 重点题回顾
+    summary_lines = []
+    summary_lines.append(f"## 📚 本周回顾（{week_start} ~ {week_end}）")
+    summary_lines.append("")
+    summary_lines.append(f"**本周覆盖 {len(covered_mods)} 个模块，共 {len(all_points)} 个知识点**")
+    summary_lines.append("")
+    summary_lines.append("**模块分布**：")
+    for mod, cnt in mods_sorted:
+        bar = "▇" * cnt
+        summary_lines.append(f"- {mod}：{bar} {cnt} 天")
+    summary_lines.append("")
+    if weakness_list:
+        summary_lines.append(f"**⚠️ 薄弱提醒**：本周未涉及或仅 1 次的模块 → {' / '.join(weakness_list)}，下周可重点补。")
+        summary_lines.append("")
+    summary_lines.append("**本周知识点索引**：")
+    for i, p in enumerate(all_points, 1):
+        summary_lines.append(f"{i}. [{p['date']}] **{p['title']}**（{p['module']}）")
+
+    # ── 周测真题：精选本周所有真题（去重：同题不重复），上限 8 题
+    quiz_lines = []
+    quiz_lines.append(f"## 📝 本周真题回顾（{week_start} ~ {week_end}，共 {min(8, len(all_points))} 题）")
+    quiz_lines.append("")
+    seen_titles = set()
+    selected = []
+    for p in all_points:
+        if p["title"] in seen_titles:
+            continue
+        seen_titles.add(p["title"])
+        selected.append(p)
+        if len(selected) >= 8:
+            break
+    for i, p in enumerate(selected, 1):
+        quiz_lines.append(f"### 第 {i} 题 · {p['title']}")
+        quiz_lines.append(f"**来源**：{p['src'] or '模拟题（原创）'}")
+        if p["q"]:
+            quiz_lines.append(f"**题干**：{p['q']}")
+        for opt in p["opts"]:
+            if opt:
+                quiz_lines.append(f"- {opt}")
+        quiz_lines.append(f"**答案**：{p['ans']}")
+        quiz_lines.append("")
+
+    # ── 错题本：暂无用户实际做题数据。给出"建议记录"框架
+    review_lines = []
+    review_lines.append(f"## 📊 本周易错提示（{week_start} ~ {week_end}）")
+    review_lines.append("")
+    if weakness_list:
+        for m in weakness_list:
+            review_lines.append(f"- **{m}** 出现频率低（{module_count.get(m, 0)} 次），属本周薄弱模块，建议周末做 5-10 道该模块真题巩固。")
+    else:
+        review_lines.append("- 本周模块覆盖较均衡，未检测出明显薄弱。")
+    review_lines.append("")
+    review_lines.append("> ⚠️ 错题本需实际做题数据填充。当你开始「周测」互动后，错题会自动收录。")
+
+    return {
+        "week_range": [week_start, week_end],
+        "module_distribution": module_count,
+        "weakness_modules": weakness_list,
+        "summary": "\n".join(summary_lines),
+        "quiz": "\n".join(quiz_lines),
+        "review": "\n".join(review_lines),
+    }
+
+
+def _analyze_lc_weekly(history):
+    this_week, _ = week_bounds(history)
+    if not this_week:
+        return {"summary": None, "hot": None, "week_range": None}
+    week_start = this_week[0]["date"]
+    week_end = this_week[-1]["date"]
+
+    # 收集本周所有概念 + 热点
+    concepts = []
+    hots = []
+    parsed_by_date = {}
+    for h in this_week:
+        p = parse_lc_md(h["md"])
+        parsed_by_date[h["date"]] = p
+        if p["know_name"]:
+            concepts.append({"date": h["date"], **p})
+        if p["hot_event"]:
+            hots.append({"date": h["date"], "event": p["hot_event"], "src": p["hot_src"]})
+
+    # 推断 level 升级：本周讲的概念里有几个 L3+ → 是否覆盖
+    levels_seen = sorted(set(c.get("know_level", "").split(" ")[0] for c in concepts if c.get("know_level")))
+
+    # 薄弱项：基于 covered 数量（进度 json 里）
+    # 薄弱 level：进度里 covered < 3 但已升到该 level → 该 level 后续概念可能生疏
+
+    summary_lines = []
+    summary_lines.append(f"## 📈 本周回顾（{week_start} ~ {week_end}）")
+    summary_lines.append("")
+    summary_lines.append(f"**本周共学 {len(concepts)} 个新概念，{len(hots)} 条财经热点**")
+    summary_lines.append("")
+    if levels_seen:
+        summary_lines.append(f"**覆盖层级**：{' → '.join(levels_seen)}")
+        summary_lines.append("")
+    summary_lines.append("**本周概念索引**：")
+    for i, c in enumerate(concepts, 1):
+        summary_lines.append(f"{i}. [{c['date']}] **{c['know_name']}**（{c.get('know_level', '—')}）")
+    summary_lines.append("")
+    summary_lines.append("**本周小白提示回顾**：")
+    for c in concepts:
+        if c.get("tip"):
+            summary_lines.append(f"- [{c['date']}] {c['tip']}")
+    summary_lines.append("")
+
+    hot_lines = []
+    hot_lines.append(f"## 🔥 本周热点回顾（{week_start} ~ {week_end}）")
+    hot_lines.append("")
+    for i, h in enumerate(hots, 1):
+        hot_lines.append(f"### 热点 {i} · [{h['date']}]")
+        hot_lines.append(f"**事件**：{h['event']}")
+        if h["src"]:
+            hot_lines.append(f"**来源**：{h['src']}")
+        hot_lines.append("")
+
+    return {
+        "week_range": [week_start, week_end],
+        "levels_seen": levels_seen,
+        "summary": "\n".join(summary_lines),
+        "hot": "\n".join(hot_lines),
+    }
+
+
 def build(kg_dir, lc_dir, data_out, source_root=None):
     kg_md = latest_md_path(kg_dir)
     lc_md = latest_md_path(lc_dir)
@@ -189,6 +484,10 @@ def build(kg_dir, lc_dir, data_out, source_root=None):
         d = os.path.basename(p)[:10]
         lc_history.append({"date": d, "md": open(p, encoding="utf-8").read()})
 
+    # 自动分析：考公 + 理财的薄弱项 / 周总结 / 周测真题 / 周热点
+    kg_weekly = analyze_weekly(kg_history, kind="kaogong")
+    lc_weekly = analyze_weekly(lc_history, kind="licai")
+
     # 笔记：浏览器导出到 source/notes.json 即可跨设备同步
     notes = load_notes(source_root) if source_root else {}
 
@@ -206,9 +505,12 @@ def build(kg_dir, lc_dir, data_out, source_root=None):
     out.append("  kaogong: {")
     out.append("    progress: " + json.dumps(kg_progress, ensure_ascii=False) + ",")
     out.append("    modules: " + json.dumps(KG_MODULES, ensure_ascii=False) + ",")
-    out.append("    weakness: null,")
-    out.append("    wrongbook: null,")
-    out.append("    weekly_quiz: null,")
+    out.append("    weakness: " + (js_md_lit(kg_weekly["review"]) if kg_weekly.get("review") else "null") + ",")
+    out.append("    weakness_modules: " + json.dumps(kg_weekly.get("weakness_modules", []), ensure_ascii=False) + ",")
+    out.append("    wrongbook: " + (js_md_lit("## 我的错题本\n\n周测互动上线后，做错的题会自动收录到这里。\n") if not kg_weekly.get("review") else "null") + ",")
+    out.append("    weekly_summary: " + (js_md_lit(kg_weekly["summary"]) if kg_weekly.get("summary") else "null") + ",")
+    out.append("    weekly_quiz: " + (js_md_lit(kg_weekly["quiz"]) if kg_weekly.get("quiz") else "null") + ",")
+    out.append("    weekly_range: " + json.dumps(kg_weekly.get("week_range"), ensure_ascii=False) + ",")
     out.append("    today_md: " + js_md_lit(kg_md_text) + ",")
     out.append("    history_md: " + json.dumps([{"date": h["date"], "md": h["md"]} for h in kg_history], ensure_ascii=False))
     out.append("  },")
@@ -218,6 +520,9 @@ def build(kg_dir, lc_dir, data_out, source_root=None):
     out.append("    progress: " + json.dumps(lc_progress, ensure_ascii=False) + ",")
     out.append("    levels: " + json.dumps(LC_LEVELS, ensure_ascii=False) + ",")
     out.append("    fund: " + json.dumps(funds, ensure_ascii=False) + ",")
+    out.append("    weekly_summary: " + (js_md_lit(lc_weekly["summary"]) if lc_weekly.get("summary") else "null") + ",")
+    out.append("    weekly_hot: " + (js_md_lit(lc_weekly["hot"]) if lc_weekly.get("hot") else "null") + ",")
+    out.append("    weekly_range: " + json.dumps(lc_weekly.get("week_range"), ensure_ascii=False) + ",")
     out.append("    today_md: " + js_md_lit(lc_md_text) + ",")
     out.append("    history_md: " + json.dumps([{"date": h["date"], "md": h["md"]} for h in lc_history], ensure_ascii=False))
     out.append("  },")
