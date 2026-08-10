@@ -688,16 +688,220 @@ body {
 .quiz-details[open] > summary::before { content: "▾ "; }
 .quiz-details > summary:hover { text-decoration-style: solid; }
 
-/* 错题卡 */
+/* 错题卡（错题本 + 周测分析共用基础） */
 .wrong-card {
   background: #fff;
   border: 1px solid rgba(225,109,118,.2);
   border-left: 3px solid #e16d76;
   border-radius: var(--radius-sm);
   padding: var(--sp-3);
-  margin-bottom: var(--sp-2);
+  margin-bottom: var(--sp-3);
 }
 .wrong-title { font-weight: 500; font-size: var(--fs-sm); }
+
+/* 错题本：完整题卡（错题本 Tab 专用） */
+.wrong-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.wrong-card-meta {
+  display: flex;
+  gap: var(--sp-3);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--mist);
+}
+.wrong-card-date { color: var(--ink); font-weight: 600; }
+.wrong-card-score { color: var(--mist); }
+.wrong-card-title {
+  font-size: var(--fs-base);
+  font-weight: 500;
+  color: var(--ink);
+  margin: var(--sp-2) 0 var(--sp-2);
+  line-height: 1.5;
+}
+.wrong-card-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: var(--sp-2) 0;
+  background: rgba(43,43,40,.02);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+}
+.wrong-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-sm);
+  padding: 4px 0;
+  line-height: 1.5;
+}
+.wrong-opt.user .opt-letter { background: var(--red); color: #fff; }
+.wrong-opt.correct { color: var(--ink); }
+.wrong-opt.correct.user { color: var(--ink); }
+.wrong-opt .opt-letter {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid var(--mist);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--mist);
+  background: #fff;
+}
+.wrong-opt .opt-text { flex: 1; }
+.wrong-opt .opt-mark {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  letter-spacing: 0;
+}
+.opt-mark.ok { background: rgba(58,122,77,.15); color: #3a7a4d; }
+.opt-mark.err { background: rgba(225,109,118,.15); color: #c95b6b; }
+.opt-mark.miss { background: rgba(255,200,87,.18); color: #8a6700; }
+.wrong-card-answers {
+  display: flex;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  margin: var(--sp-2) 0;
+  padding-top: var(--sp-2);
+  border-top: 1px dashed rgba(43,43,40,.08);
+}
+.wrong-card-answers b { color: var(--mist); font-weight: 500; margin-right: 4px; }
+.wrong-card-answers .user-ans { color: var(--red); font-weight: 600; }
+.wrong-card-answers .correct-ans { color: var(--green); font-weight: 600; }
+.wrong-card-explain {
+  background: rgba(94,123,90,.06);
+  border-left: 2px solid var(--moss);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--dai);
+  line-height: 1.7;
+  margin: var(--sp-2) 0;
+}
+.wrong-card-kp {
+  background: rgba(74,102,112,.08);
+  border-left: 3px solid var(--kg-accent);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  line-height: 1.7;
+  margin: var(--sp-2) 0;
+  font-weight: 500;
+}
+
+/* 周测分析：错题紧凑行（不重列题干，只显知识点） */
+.quiz-wrong-row {
+  background: #fff;
+  border: 1px solid var(--kg-border);
+  border-left: 3px solid var(--red);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3);
+  margin: var(--sp-2) 0;
+}
+.quiz-wrong-head {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.quiz-wrong-num {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+  background: rgba(74,102,112,.08);
+  padding: 1px 10px;
+  border-radius: 10px;
+}
+.quiz-wrong-answers { font-family: var(--mono); font-size: var(--fs-sm); color: var(--mist); }
+.quiz-wrong-answers .user-ans { color: var(--red); font-weight: 600; }
+.quiz-wrong-answers .correct-ans { color: var(--green); font-weight: 600; }
+.quiz-wrong-kp {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  line-height: 1.7;
+  background: rgba(74,102,112,.04);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  margin: 6px 0 var(--sp-2);
+}
+
+/* 错误原因块状按钮（错题本 + 周测分析共用） */
+.reason-selector {
+  margin-top: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: rgba(255,200,87,.04);
+  border-left: 2px solid #f0b400;
+  border-radius: var(--radius-sm);
+}
+.reason-prompt {
+  font-size: var(--fs-sm);
+  color: var(--dai);
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+.reason-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.reason-btn {
+  background: #fff;
+  border: 1.5px solid var(--kg-border);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: var(--fs-sm);
+  padding: 4px 14px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all .2s;
+  white-space: nowrap;
+}
+.reason-btn:hover { border-color: var(--kg-accent); color: var(--kg-accent); }
+.reason-btn.selected {
+  background: var(--kg-accent);
+  color: #fff;
+  border-color: var(--kg-accent);
+  box-shadow: 0 2px 6px rgba(74,102,112,.25);
+  font-weight: 500;
+}
+.reason-custom-wrap { display: flex; gap: 6px; }
+.reason-custom-input {
+  flex: 1;
+  background: #fff;
+  border: 1px solid var(--kg-border);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: var(--fs-sm);
+  padding: 4px 12px;
+  border-radius: 16px;
+  outline: none;
+  transition: border-color .2s;
+}
+.reason-custom-input:focus { border-color: var(--kg-accent); }
+.reason-custom-input::placeholder { color: var(--mist); }
+
+/* 旧 wrong-empty 保留 */
+.wrong-empty { text-align: center; padding: var(--sp-7) var(--sp-4); color: var(--mist); }
 
 /* 错题原因 chip */
 .reason-chip {
