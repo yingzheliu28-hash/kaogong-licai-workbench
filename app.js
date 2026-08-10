@@ -325,7 +325,7 @@ return {
     while (m > 12) { m -= 12; y += 1; }
     return y + "-" + String(m).padStart(2, "0");
   }
-  // 跨日关键词检索：在所有历史日的所有知识点里搜
+  // 跨日关键词检索：在所有历史日的所有知识点里搜；命中片段对关键词做高亮
   function searchKgPoints(q) {
     q = (q || "").trim().toLowerCase();
     if (!q) return [];
@@ -342,25 +342,40 @@ return {
         p.jiexi || ""
       ].join(" ").toLowerCase();
       if (hay.indexOf(q) >= 0) {
-        // 高亮命中片段
-        var src = (p.jiangjie || p.koujue || p.jiexi || "");
+        // 合集里取片段 + 高亮关键词（使用安全的 esc + <b> 拼接，不含原始 innerHTML）
+        var src = (p.jiangjie || p.koujue || p.jiexi || (p.qLines && p.qLines.join(" ")) || "");
         var lowerSrc = src.toLowerCase();
         var pos = lowerSrc.indexOf(q);
         var snippet;
         if (pos >= 0) {
           var s = Math.max(0, pos - 16);
           var e = Math.min(src.length, pos + q.length + 48);
-          snippet = (s > 0 ? "…" : "") + src.slice(s, e) + (e < src.length ? "…" : "");
+          snippet = (s > 0 ? "…" : "")
+            + esc(src.slice(s, pos))
+            + '<b class="kg-highlight">' + esc(src.slice(pos, pos + q.length)) + '</b>'
+            + esc(src.slice(pos + q.length, e))
+            + (e < src.length ? "…" : "");
         } else {
-          snippet = (p.jiangjie || p.koujue || "").slice(0, 60);
+          snippet = esc((p.jiangjie || p.koujue || "").slice(0, 60));
+        }
+        // 标题也高亮
+        var titleLower = (p.title || "").toLowerCase();
+        var ti = titleLower.indexOf(q);
+        var titleHighlighted;
+        if (ti >= 0) {
+          titleHighlighted = esc(p.title.slice(0, ti))
+            + '<b class="kg-highlight">' + esc(p.title.slice(ti, ti + q.length)) + '</b>'
+            + esc(p.title.slice(ti + q.length));
+        } else {
+          titleHighlighted = esc(p.title || "未命名知识点");
         }
         hits.push({
           date: item.date,
           day: item.day,
           moduleName: item.moduleName,
           idx: item.idx,
-          title: p.title,
-          snippet: snippet
+          titleHtml: titleHighlighted,
+          snippetHtml: snippet
         });
       }
     }
@@ -656,8 +671,8 @@ return {
           '<span class="kg-result-module">' + esc(h.moduleName) + '</span>' +
           '<span class="kg-result-num">第 ' + (h.idx + 1) + ' 题</span>' +
         '</div>' +
-        '<div class="kg-result-title">' + esc(h.title || "未命名知识点") + '</div>' +
-        '<div class="kg-result-snippet">' + esc(h.snippet) + '</div>' +
+        '<div class="kg-result-title">' + h.titleHtml + '</div>' +
+        '<div class="kg-result-snippet">' + h.snippetHtml + '</div>' +
       '</div>';
     }).join("");
     return '<div class="kg-card fade kg-results-card">' +
