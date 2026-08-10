@@ -725,6 +725,31 @@ return {
     return w.reason || "未标注";
   }
 
+  // 完整知识点渲染（错题本 + 周测分析共用）：原始日推送的「讲解」全文
+  // 优先级：full_knowledge.explain > mnemonic > knowledge_point
+  function renderFullKnowledge(fk) {
+    var explain = fk.explain || "";
+    var mnemonic = fk.mnemonic || "";
+    var title = fk.title || "";
+    var sourceDate = fk.source_date || "";
+    var headerBits = [];
+    if (title) headerBits.push('<b>' + esc(title) + '</b>');
+    if (sourceDate) headerBits.push('<span class="full-kp-source">📅 来源 ' + esc(sourceDate) + '</span>');
+    var body = '';
+    if (explain) {
+      body += '<div class="full-kp-explain">' + esc(explain).replace(/\n/g, "<br>") + '</div>';
+    }
+    if (mnemonic) {
+      body += '<div class="full-kp-mnemonic">🧠 口诀：' + esc(mnemonic) + '</div>';
+    }
+    return '<div class="full-kp">' +
+      '<div class="full-kp-head">📚 完整知识点（来自原始日推送）' +
+        (headerBits.length ? '<div class="full-kp-header">' + headerBits.join(" · ") + '</div>' : '') +
+      '</div>' +
+      body +
+    '</div>';
+  }
+
   // 渲染块状按钮 + 自定义输入；selected 来自 localStorage（高亮已选）
   function renderReasonSelector(dateStr, qIdx) {
     var current = getUserWrongReason(dateStr, qIdx);
@@ -820,7 +845,8 @@ return {
         '<span><b>题型：</b>' + esc(opts.length > 4 ? "不定项" : "单选") + '</span>' +
       '</div>' +
       (q.explanation ? '<div class="wrong-card-explain">💡 解析：' + esc(q.explanation) + '</div>' : '') +
-      (q.knowledge_point ? '<div class="wrong-card-kp">🎯 知识点：' + esc(q.knowledge_point) + '</div>' : '') +
+      (q.knowledge_point ? '<div class="wrong-card-kp">🎯 小测要点：' + esc(q.knowledge_point) + '</div>' : '') +
+      (q.full_knowledge ? renderFullKnowledge(q.full_knowledge) : '') +
       renderReasonSelector(w.date, w.q_idx) +
     '</div>';
   }
@@ -869,9 +895,11 @@ return {
             '<div style="font-size:var(--fs-sm);color:var(--mist);margin-bottom:var(--sp-2);">📚 本次错题对应知识点：</div>' +
             lastWrong.map(function (w) {
               var q = w.question || {};
-              var kp = q.knowledge_point || q.explanation || "（未抓到该题知识点）";
               var moduleTag = w.module
                 ? '<span class="sector-tag" style="background:rgba(225,109,118,.12);color:#c95b6b;margin-left:6px;">📍 ' + esc(w.module) + '</span>'
+                : '';
+              var quizKline = q.knowledge_point
+                ? '<div class="quiz-wrong-kp">🎯 小测要点：' + esc(q.knowledge_point) + '</div>'
                 : '';
               return '<div class="quiz-wrong-row" data-qr="' + w.date + '_' + w.q_idx + '">' +
                 '<div class="quiz-wrong-head">' +
@@ -879,7 +907,7 @@ return {
                   '<span class="quiz-wrong-answers">你选 <span class="user-ans">' + esc(w.user_answer) + '</span> · 正答 <span class="correct-ans">' + esc(w.correct_answer) + '</span></span>' +
                   moduleTag +
                 '</div>' +
-                '<div class="quiz-wrong-kp">🎯 ' + esc(kp) + '</div>' +
+                (q.full_knowledge ? renderFullKnowledge(q.full_knowledge) : quizKline) +
                 renderReasonSelector(w.date, w.q_idx) +
               '</div>';
             }).join("") +
