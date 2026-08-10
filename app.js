@@ -698,17 +698,64 @@ return {
     document.getElementById("kg-content").innerHTML = "";
   }
 
-  /* -- Tab: 错题本（联动周测结果 + 每题标知识点） -- */
+  /* ── 错题原因选择（块状按钮 + 自定义输入 + localStorage 同步） ── */
+  var REASON_PRESETS = [
+    "知识点未掌握",
+    "知识模糊/记忆不准",
+    "粗心大意",
+    "读题不准"
+  ];
+  var REASON_LS_KEY = "kg_wrong_reason_v1";
+  function loadWrongReasons() {
+    try { return JSON.parse(localStorage.getItem(REASON_LS_KEY) || "{}") || {}; }
+    catch (e) { return {}; }
+  }
+  function saveWrongReasons(map) {
+    try { localStorage.setItem(REASON_LS_KEY, JSON.stringify(map)); } catch (e) {}
+  }
+  function wrongReasonKey(dateStr, qIdx) { return dateStr + "::" + qIdx; }
+  function getUserWrongReason(dateStr, qIdx) {
+    var m = loadWrongReasons();
+    return m[wrongReasonKey(dateStr, qIdx)] || "";
+  }
+  // 显示用：优先用户自定原因 → 退回 md 的 reason → "未标注"
+  function getDisplayReason(w) {
+    var user = getUserWrongReason(w.date, w.q_idx);
+    if (user) return user;
+    return w.reason || "未标注";
+  }
+
+  // 渲染块状按钮 + 自定义输入；selected 来自 localStorage（高亮已选）
+  function renderReasonSelector(dateStr, qIdx) {
+    var current = getUserWrongReason(dateStr, qIdx);
+    var isCustom = current && REASON_PRESETS.indexOf(current) < 0;
+    var presetBtns = REASON_PRESETS.map(function (r) {
+      var sel = (r === current) ? " selected" : "";
+      return '<button type="button" class="reason-btn' + sel + '" ' +
+        'onclick="WB.setWrongReason(\'' + dateStr + '\',' + qIdx + ',\'' + esc(r).replace(/'/g, "\\'") + '\')">' +
+        esc(r) + '</button>';
+    }).join("");
+    var otherBtn = '<button type="button" class="reason-btn' + (isCustom ? " selected" : "") + '" ' +
+      'onclick="WB.focusCustomReason(\'' + dateStr + '\',' + qIdx + ')">其他</button>';
+    var customVal = isCustom ? current : "";
+    return '<div class="reason-selector" data-rk="' + dateStr + '_' + qIdx + '">' +
+      '<div class="reason-prompt">💡 本题错误原因是什么？</div>' +
+      '<div class="reason-btns">' + presetBtns + otherBtn + '</div>' +
+      '<div class="reason-custom-wrap">' +
+        '<input type="text" class="reason-custom-input" id="reasonInput_' + dateStr + '_' + qIdx + '" ' +
+        'placeholder="或输入自己的原因（自定义）" value="' + esc(customVal) + '" ' +
+        'oninput="WB.setWrongReasonCustom(\'' + dateStr + '\',' + qIdx + ',this.value)" />' +
+      '</div>' +
+    '</div>';
+  }
+
+  /* -- Tab: 错题本（联动周测结果，完整呈现题目/选项/解析/答案 + 错误原因选择） -- */
   function renderKgWrong() {
     var history = D.kaogong.quiz_history || [];
     var allWrong = [];
     history.forEach(function (h) {
       (h.wrong || []).forEach(function (w) {
-        allWrong.push(Object.assign({}, w, {
-          date: h.date,
-          week: h.week,
-          score: h.score
-        }));
+        allWrong.push(Object.assign({}, w, { date: h.date, week: h.week, score: h.score }));
       });
     });
     if (allWrong.length === 0) {
@@ -720,39 +767,65 @@ return {
         '</div>';
       return;
     }
-    var cards = allWrong.map(function (w) {
-      var moduleTag = w.module
-        ? '<span class="sector-tag" style="background:rgba(225,109,118,.12);color:#c95b6b;margin-left:var(--sp-2);">📍 ' + esc(w.module) + '</span>'
-        : '';
-      var reasonTag = w.reason
-        ? '<span class="sector-tag" style="background:rgba(255,200,87,.15);color:#a07820;">❓ ' + esc(w.reason) + '</span>'
-        : '';
-      return '<div class="wrong-card fade">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">' +
-          '<div style="font-size:var(--fs-xs);color:var(--mist);">' +
-            esc(w.date || "") + (w.week ? " · " + esc(w.week) : "") +
-          '</div>' +
-          '<div style="font-family:var(--mono);font-size:var(--fs-xs);color:var(--mist);">得分 ' + esc(w.score || "—") + '</div>' +
-        '</div>' +
-        '<div class="wrong-title" style="margin-top:6px;">' +
-          '第 ' + esc(String(w.q_idx || "?")) + ' 题 · ' + esc(w.title || "未命名") +
-          moduleTag +
-        '</div>' +
-        '<div style="margin-top:6px;font-size:var(--fs-xs);color:var(--mist);">' +
-            '你选 <span style="color:#c95b6b;font-weight:600;">' + esc(w.user_answer || "—") + '</span>' +
-            ' · 正确答案 <span style="color:#3a7a4d;font-weight:600;">' + esc(w.correct_answer || "—") + '</span>' +
-            (reasonTag ? " " + reasonTag : "") +
-        '</div>' +
-      '</div>';
-    }).join("");
+    var cards = allWrong.map(function (w) { return renderWrongCard(w); }).join("");
     document.getElementById("kg-content").innerHTML =
       '<div class="weekly-toolbar">' +
-        '<span class="toolbar-label">📝 共 ' + allWrong.length + ' 道错题（来自 ' + history.length + ' 次小测）</span>' +
+        '<span class="toolbar-label">📝 共 ' + allWrong.length + ' 道错题（来自 ' + history.length + ' 次小测）· 完整呈现题目 / 选项 / 解析 / 你的答案 / 正确选项</span>' +
       '</div>' +
       cards;
   }
+  // 错题单卡：完整呈现
+  function renderWrongCard(w) {
+    var q = w.question || {};
+    var stem = q.stem || w.title || "（题源未解析）";
+    var opts = q.options || [];
+    var userAns = (w.user_answer || "").split("").filter(function (c) { return /[A-Z]/.test(c); });
+    var corrAns = (w.correct_answer || "").split("").filter(function (c) { return /[A-Z]/.test(c); });
+    var optsHtml = opts.length
+      ? opts.map(function (o) {
+          var L = o[0], t = o[1];
+          var u = userAns.indexOf(L) >= 0;
+          var c = corrAns.indexOf(L) >= 0;
+          var cls = "wrong-opt" + (u ? " user" : "") + (c ? " correct" : "");
+          var mark = "";
+          if (u && c) mark = '<span class="opt-mark ok">✓✓</span>';        // 选且对
+          else if (u && !c) mark = '<span class="opt-mark err">✗</span>';   // 选了但错（多选漏选不会到这里）
+          else if (!u && c) mark = '<span class="opt-mark miss">漏</span>'; // 漏选
+          return '<div class="' + cls + '"><span class="opt-letter">' + L + '</span><span class="opt-text">' + esc(t) + '</span>' + mark + '</div>';
+        }).join("")
+      : '<div style="color:var(--mist);font-size:var(--fs-xs);">（未抓到选项）</div>';
+    var moduleTag = w.module
+      ? '<span class="sector-tag" style="background:rgba(225,109,118,.12);color:#c95b6b;margin-left:var(--sp-2);">📍 ' + esc(w.module) + '</span>'
+      : '';
+    var reason = getDisplayReason(w);
+    var isUser = !!getUserWrongReason(w.date, w.q_idx);
+    var reasonTag = '<span class="sector-tag" style="background:' + (isUser ? 'rgba(94,123,90,.15)' : 'rgba(255,200,87,.15)') + ';color:' + (isUser ? '#3a7a4d' : '#a07820') + ';">' +
+      (isUser ? '✓ ' : '❓ ') + esc(reason) + '</span>';
 
-  /* -- Tab: 周测分析（折叠题回顾 + 答题点评 + 累计柱状图 + 薄弱项） -- */
+    return '<div class="wrong-card fade" data-wk="' + w.date + '_' + w.q_idx + '">' +
+      '<div class="wrong-card-head">' +
+        '<div class="wrong-card-meta">' +
+          '<span class="wrong-card-date">' + esc(w.date || "") + '</span>' +
+          '<span class="wrong-card-score">得分 ' + esc(w.score || "—") + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="wrong-card-title">' +
+        '第 ' + esc(String(w.q_idx || "?")) + ' 题 · ' + esc(stem) +
+        moduleTag + reasonTag +
+      '</div>' +
+      '<div class="wrong-card-opts">' + optsHtml + '</div>' +
+      '<div class="wrong-card-answers">' +
+        '<span><b>你选：</b><span class="user-ans">' + esc(w.user_answer || "—") + '</span></span>' +
+        '<span><b>正确：</b><span class="correct-ans">' + esc(w.correct_answer || "—") + '</span></span>' +
+        '<span><b>题型：</b>' + esc(opts.length > 4 ? "不定项" : "单选") + '</span>' +
+      '</div>' +
+      (q.explanation ? '<div class="wrong-card-explain">💡 解析：' + esc(q.explanation) + '</div>' : '') +
+      (q.knowledge_point ? '<div class="wrong-card-kp">🎯 知识点：' + esc(q.knowledge_point) + '</div>' : '') +
+      renderReasonSelector(w.date, w.q_idx) +
+    '</div>';
+  }
+
+  /* -- Tab: 周测分析（折叠题回顾 + 答题点评 + 错误原因选择 + 累计统计 + 薄弱项） -- */
   function renderKgQuiz() {
     var stats = D.kaogong.quiz_stats || {};
     var last = stats.last_quiz;
@@ -779,7 +852,7 @@ return {
         '</div>';
     }
 
-    // 2. 答题点评
+    // 2. 答题点评：列出错题（每条只显示知识点 + 原因选择，不重列题干）
     var feedbackSection = "";
     if (last) {
       var lastWrong = last.wrong || [];
@@ -788,35 +861,28 @@ return {
         ? '<span class="sector-tag" style="background:rgba(58,122,77,.15);color:#3a7a4d;">🟢 全对</span>'
         : '<span class="sector-tag" style="background:rgba(225,109,118,.12);color:#c95b6b;">🔴 ' + esc(last.score || "") + '</span>';
       var lastTitle = "最近一次小测 · " + esc(last.date || "") + " · " + esc(last.week || "");
+
       var wrongListHtml = "";
       if (lastWrong.length > 0) {
-        var reasonCount = {};
-        lastWrong.forEach(function (w) {
-          var r = w.reason || "未标注";
-          reasonCount[r] = (reasonCount[r] || 0) + 1;
-        });
-        var reasonHtml = Object.keys(reasonCount).map(function (r) {
-          return '<span class="reason-chip">' + esc(r) + " · " + reasonCount[r] + " 题</span>";
-        }).join("");
         wrongListHtml =
           '<div class="wrong-summary">' +
-            '<div style="margin-top:var(--sp-2);font-size:var(--fs-xs);color:var(--mist);">错题原因：</div>' +
-            '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">' + reasonHtml + '</div>' +
-            '<div style="margin-top:var(--sp-2);">' +
-              lastWrong.map(function (w) {
-                return '<div class="wrong-line">' +
-                  "第 " + esc(String(w.q_idx)) + " 题 <b>" + esc(w.title) + "</b>" +
-                  "（" + esc(w.module) + "）" +
-                  ' · 你选 <span style="color:#c95b6b;">' + esc(w.user_answer) + '</span>' +
-                  ' · 正答 <span style="color:#3a7a4d;">' + esc(w.correct_answer) + '</span>' +
-                  "</div>";
-              }).join("") +
-            "</div>" +
-            '<div class="cta" style="margin-top:var(--sp-3);background:rgba(255,200,87,.08);border-left:3px solid #f0b400;">' +
-              "<b>💡 错题原因记录</b><br/>" +
-              "每道错题都可以单独标记原因，下次「答题点评」会更精准。" +
-              '<div style="margin-top:var(--sp-2);font-size:var(--fs-xs);color:var(--mist);">（当前 demo 数据是预填原因；正式使用后你可以在 WorkBuddy 对话里给每题选「未掌握 / 知识点薄弱 / 粗心看错题」）</div>' +
-            "</div>" +
+            '<div style="font-size:var(--fs-sm);color:var(--mist);margin-bottom:var(--sp-2);">📚 本次错题对应知识点：</div>' +
+            lastWrong.map(function (w) {
+              var q = w.question || {};
+              var kp = q.knowledge_point || q.explanation || "（未抓到该题知识点）";
+              var moduleTag = w.module
+                ? '<span class="sector-tag" style="background:rgba(225,109,118,.12);color:#c95b6b;margin-left:6px;">📍 ' + esc(w.module) + '</span>'
+                : '';
+              return '<div class="quiz-wrong-row" data-qr="' + w.date + '_' + w.q_idx + '">' +
+                '<div class="quiz-wrong-head">' +
+                  '<span class="quiz-wrong-num">第 ' + esc(String(w.q_idx)) + ' 题</span>' +
+                  '<span class="quiz-wrong-answers">你选 <span class="user-ans">' + esc(w.user_answer) + '</span> · 正答 <span class="correct-ans">' + esc(w.correct_answer) + '</span></span>' +
+                  moduleTag +
+                '</div>' +
+                '<div class="quiz-wrong-kp">🎯 ' + esc(kp) + '</div>' +
+                renderReasonSelector(w.date, w.q_idx) +
+              '</div>';
+            }).join("") +
           "</div>";
       }
       feedbackSection =
@@ -1243,6 +1309,41 @@ return {
       var inp = document.getElementById("kgSearchInput");
       if (inp) inp.value = "";
       renderKaogong();
+    },
+    /* 错题原因选择（块状按钮 + 自定义输入 → localStorage 持久化） */
+    setWrongReason: function (dateStr, qIdx, reason) {
+      var map = loadWrongReasons();
+      map[wrongReasonKey(dateStr, qIdx)] = reason;
+      saveWrongReasons(map);
+      // 重新渲染当前 Tab（错题本 / 周测分析）
+      renderKaogong();
+    },
+    setWrongReasonCustom: function (dateStr, qIdx, val) {
+      var map = loadWrongReasons();
+      map[wrongReasonKey(dateStr, qIdx)] = val;
+      saveWrongReasons(map);
+      // 局部更新：直接重写当前选择器高亮 + 标签，无需全 Tab 重渲染
+      var sel = document.querySelector('.reason-selector[data-rk="' + dateStr + '_' + qIdx + '"]');
+      if (sel) {
+        sel.querySelectorAll(".reason-btn").forEach(function (b) { b.classList.remove("selected"); });
+        // 自定义值高亮"其他"按钮
+        var otherBtn = sel.querySelector(".reason-btn:last-child");
+        if (otherBtn) otherBtn.classList.add("selected");
+      }
+      // 同步错题本标签（如果当前在错题本）
+      var card = document.querySelector('.wrong-card[data-wk="' + dateStr + '_' + qIdx + '"]');
+      if (card) {
+        var tagsRow = card.querySelector(".wrong-card-title");
+        if (tagsRow) {
+          // 找现有的 reason 标签并更新
+          var oldTag = tagsRow.querySelector(".sector-tag");
+          if (oldTag) oldTag.outerHTML = '<span class="sector-tag" style="background:rgba(94,123,90,.15);color:#3a7a4d;">✓ ' + esc(val) + '</span>';
+        }
+      }
+    },
+    focusCustomReason: function (dateStr, qIdx) {
+      var inp = document.getElementById("reasonInput_" + dateStr + "_" + qIdx);
+      if (inp) { inp.focus(); inp.select(); }
     }
   };
 
