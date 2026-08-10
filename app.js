@@ -725,29 +725,12 @@ return {
     return w.reason || "未标注";
   }
 
-  // 完整知识点渲染（错题本 + 周测分析共用）：原始日推送的「讲解」全文
-  // 优先级：full_knowledge.explain > mnemonic > knowledge_point
-  function renderFullKnowledge(fk) {
-    var explain = fk.explain || "";
-    var mnemonic = fk.mnemonic || "";
-    var title = fk.title || "";
+  // 错题 / 周测中的"去完整推送"按钮（跳转知识考点 Tab 的对应日期）
+  function renderKgSourceJumpBtn(fk) {
     var sourceDate = fk.source_date || "";
-    var headerBits = [];
-    if (title) headerBits.push('<b>' + esc(title) + '</b>');
-    if (sourceDate) headerBits.push('<span class="full-kp-source">📅 来源 ' + esc(sourceDate) + '</span>');
-    var body = '';
-    if (explain) {
-      body += '<div class="full-kp-explain">' + esc(explain).replace(/\n/g, "<br>") + '</div>';
-    }
-    if (mnemonic) {
-      body += '<div class="full-kp-mnemonic">🧠 口诀：' + esc(mnemonic) + '</div>';
-    }
-    return '<div class="full-kp">' +
-      '<div class="full-kp-head">📚 完整知识点（来自原始日推送）' +
-        (headerBits.length ? '<div class="full-kp-header">' + headerBits.join(" · ") + '</div>' : '') +
-      '</div>' +
-      body +
-    '</div>';
+    var title = fk.title || "";
+    return '<button type="button" class="kg-jump-btn" onclick="WB.jumpToKgDate(\'' + esc(sourceDate) + '\')">' +
+      '📖 去完整推送（' + esc(sourceDate) + ' · ' + esc(title) + '）→</button>';
   }
 
   // 渲染块状按钮 + 自定义输入；selected 来自 localStorage（高亮已选）
@@ -845,8 +828,7 @@ return {
         '<span><b>题型：</b>' + esc(opts.length > 4 ? "不定项" : "单选") + '</span>' +
       '</div>' +
       (q.explanation ? '<div class="wrong-card-explain">💡 解析：' + esc(q.explanation) + '</div>' : '') +
-      (q.knowledge_point ? '<div class="wrong-card-kp">🎯 小测要点：' + esc(q.knowledge_point) + '</div>' : '') +
-      (q.full_knowledge ? renderFullKnowledge(q.full_knowledge) : '') +
+      (q.full_knowledge ? renderKgSourceJumpBtn(q.full_knowledge) : '') +
       renderReasonSelector(w.date, w.q_idx) +
     '</div>';
   }
@@ -907,7 +889,7 @@ return {
                   '<span class="quiz-wrong-answers">你选 <span class="user-ans">' + esc(w.user_answer) + '</span> · 正答 <span class="correct-ans">' + esc(w.correct_answer) + '</span></span>' +
                   moduleTag +
                 '</div>' +
-                (q.full_knowledge ? renderFullKnowledge(q.full_knowledge) : quizKline) +
+                (q.full_knowledge ? renderKgSourceJumpBtn(q.full_knowledge) : quizKline) +
                 renderReasonSelector(w.date, w.q_idx) +
               '</div>';
             }).join("") +
@@ -1372,7 +1354,21 @@ return {
     focusCustomReason: function (dateStr, qIdx) {
       var inp = document.getElementById("reasonInput_" + dateStr + "_" + qIdx);
       if (inp) { inp.focus(); inp.select(); }
+    },
+    /* 从错题/周测切到知识考点 Tab 的指定日期 */
+    jumpToKgDate: function (dateStr) {
+      if (!kgHistoryByDate[dateStr]) return;
+      // 切换到考公页 + 知识考点 Tab
+      if (state.page !== "kaogong") switchPage("kaogong");
+      if (state.kgTab !== "kg-knowledge") switchTab("kg", "kg-knowledge");
+      // 选中日期
+      state.kgSelectedDate = dateStr;
+      state.kgCalendarMonth = dateStr.slice(0, 7);
+      state.kgCalendarExpanded = false;
+      state.kgSearchQuery = "";
+      renderKaogong();
     }
+
   };
 
   /* ── 检索输入框：仅刷新内容区，搜索框自身不重渲染以保留焦点 ── */
