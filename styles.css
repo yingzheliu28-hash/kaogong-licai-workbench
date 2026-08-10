@@ -1122,6 +1122,14 @@ body {
   color: var(--mist);
   line-height: 1.6;
 }
+/* 检索命中的关键词高亮 */
+.kg-highlight {
+  color: var(--red);
+  background: rgba(181,86,63,.12);
+  border-radius: 3px;
+  padding: 0 2px;
+  font-weight: 600;
+}
 
 /* 空态（无日期推送 / 无搜索结果） */
 .kg-empty {
