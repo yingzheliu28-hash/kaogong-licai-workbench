@@ -903,7 +903,7 @@ body {
 .kg-cal-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  gap: 3px;
   margin-bottom: 4px;
   font-family: var(--mono);
   font-size: var(--fs-xs);
@@ -911,15 +911,15 @@ body {
   text-align: center;
 }
 .kg-cal-weekday {
-  padding: 4px 0;
+  padding: 2px 0;
 }
 .kg-cal-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  gap: 3px;
 }
 .kg-cal-day {
-  aspect-ratio: 1 / 1;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
