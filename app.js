@@ -90,10 +90,34 @@
   ];
 
   /* ── 解析 md 快照 ── */
-  function parseKaogong(md) {
-    // 模块名 / 天数：优先用 progress.json（数据事实源），不再依赖 md 里的"今日模块"
-    var moduleName = (D.kaogong.modules && D.kaogong.modules[D.kaogong.progress.last_module]) || "—";
-    var day = D.kaogong.progress.day || 1;
+  // 从 md 头部识别今日模块（"今日模块：①政治 · xxx"），去掉圆圈数字与「·xxx」副标题与「。xxx」补充
+  function detectKgModuleFromMd(md) {
+    if (!md) return "—";
+    var m = md.match(/今日模块[：:]\s*(?:[①②③④⑤⑥⑦]\s*)?([^（(\n·。]+)/);
+    if (m) return m[1].trim();
+    // 兜底：老格式 md 没有"今日模块："，用头部 800 字做关键词扫描
+    var head = md.slice(0, 800);
+    var patterns = [
+      ["法律",        /法律|民法|刑法|宪法|行政法|诉讼法|法条|司法|法院|检察|正当防卫|诉讼时效/],
+      ["政治",        /政治|党的|中央|二十大|三中全会|时政|政府工作报告|总书记|国务院/],
+      ["经济",        /经济|货币|财政|通胀|通缩|GDP|央行|美联储|利率|汇率|PMI|恩格尔|基尼/],
+      ["人文历史",    /历史|文学|艺术|诗词|文物|非遗|遗产|唐宋|古代|文化|名著/],
+      ["科技与生活",  /科技|生活|医学|健康|生物|化学|物理|天文|地理常识|生活常识|安全/],
+      ["地理国情",    /地理|国情|国土|河流|山脉|气候|行政区|省份|城市|海洋/],
+      ["管理公文",    /管理|公文|行文|格式|通知|请示|报告|函|决定/]
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      if (patterns[i][1].test(head)) return patterns[i][0];
+    }
+    return "—";
+  }
+  function parseKaogong(md, dayNum) {
+    // 模块名：优先从 md 头部"今日模块："取；其次 fallback 到 progress.json（兼容老格式 md）
+    var moduleName = detectKgModuleFromMd(md);
+    if (moduleName === "—" && D.kaogong.modules && D.kaogong.modules[D.kaogong.progress.last_module]) {
+      moduleName = D.kaogong.modules[D.kaogong.progress.last_module];
+    }
+    var day = dayNum || D.kaogong.progress.day || 1;
 
     // 拆分知识点：兼容 ## 与 ###（新每日推送用三级标题 ### 知识点 N：）
     var segs = md.split(/\n[#]{2,3} 知识点 \d+：/).slice(1);
@@ -195,14 +219,31 @@ return {
   /* ── 历史 md 解析（周末总结 Tab 用） ── */
   function parseHistory(historyMd, parserFn) {
     if (!Array.isArray(historyMd)) return [];
-    return historyMd.map(function (h) {
-      var parsed = parserFn(h.md || "");
-      return { date: h.date, parsed: parsed };
+    return historyMd.map(function (h, i) {
+      var dayNum = i + 1;
+      var parsed = parserFn(h.md || "", dayNum);
+      return { date: h.date, day: dayNum, parsed: parsed };
     });
   }
 
   var kgHistory = parseHistory(D.kaogong.history_md, parseKaogong);
   var lcHistory = parseHistory(D.licai.history_md, parseLicai);
+
+  // 考公历史按日期索引（O(1) 查找），同时建检索用的扁平化搜索池
+  var kgHistoryByDate = {};
+  var kgSearchPool = [];  // [{date, day, moduleName, point, idx}]
+  kgHistory.forEach(function (h) {
+    kgHistoryByDate[h.date] = h;
+    (h.parsed.points || []).forEach(function (p, idx) {
+      kgSearchPool.push({
+        date: h.date,
+        day: h.day,
+        moduleName: h.parsed.moduleName,
+        idx: idx,
+        point: p
+      });
+    });
+  });
 
   /* ── 笔记存储（localStorage 单设备；云端同步靠导出 notes.json 落 source/） ── */
   var NOTES_LS_KEY = "wb_notes_v1";
@@ -227,6 +268,104 @@ return {
     return module + "::" + date + "::" + idx;
   }
   var notesAll = loadAllNotes();
+
+  /* ═════════════════════════════════
+     知识考点 Tab：日期导航 / 日历 / 检索 辅助
+     ═════════════════════════════════ */
+  var WEEKDAY_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+  function weekdayLabel(dateStr) {
+    var d = new Date(dateStr + "T00:00:00");
+    return WEEKDAY_LABELS[(d.getDay() + 6) % 7];
+  }
+  // 某日期所在自然周的 Mon..Sun 日期数组（YYYY-MM-DD 字符串）
+  function weekDatesOf(dateStr) {
+    var d = new Date(dateStr + "T00:00:00");
+    var mon = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var offset = (mon.getDay() + 6) % 7;  // Mon=0
+    mon.setDate(mon.getDate() - offset);
+    var arr = [];
+    for (var i = 0; i < 7; i++) {
+      var dd = new Date(mon);
+      dd.setDate(mon.getDate() + i);
+      arr.push(dd.getFullYear() + "-" +
+        String(dd.getMonth() + 1).padStart(2, "0") + "-" +
+        String(dd.getDate()).padStart(2, "0"));
+    }
+    return arr;
+  }
+  // 月历网格（仅返回当月日期；Mon..Sun 7 列；行高 aspect 1:1 由 CSS 控制）
+  function monthGrid(yearMonth) {
+    var parts = yearMonth.split("-");
+    var y = parseInt(parts[0], 10);
+    var m = parseInt(parts[1], 10);
+    var first = new Date(y, m - 1, 1);
+    var last = new Date(y, m, 0);
+    var startOffset = (first.getDay() + 6) % 7;  // Mon=0
+    var rows = [];
+    var row = [];
+    for (var i = 0; i < startOffset; i++) row.push(null);
+    for (var d = 1; d <= last.getDate(); d++) {
+      row.push(d);
+      if (row.length === 7) { rows.push(row); row = []; }
+    }
+    if (row.length > 0) {
+      while (row.length < 7) row.push(null);
+      rows.push(row);
+    }
+    return { year: y, month: m, rows: rows };
+  }
+  function dateStrOf(y, m, d) {
+    return y + "-" + String(m).padStart(2, "0") + "-" + String(d).padStart(2, "0");
+  }
+  function shiftMonth(yearMonth, delta) {
+    var parts = yearMonth.split("-");
+    var y = parseInt(parts[0], 10);
+    var m = parseInt(parts[1], 10) + delta;
+    while (m < 1) { m += 12; y -= 1; }
+    while (m > 12) { m -= 12; y += 1; }
+    return y + "-" + String(m).padStart(2, "0");
+  }
+  // 跨日关键词检索：在所有历史日的所有知识点里搜
+  function searchKgPoints(q) {
+    q = (q || "").trim().toLowerCase();
+    if (!q) return [];
+    var hits = [];
+    for (var i = 0; i < kgSearchPool.length; i++) {
+      var item = kgSearchPool[i];
+      var p = item.point;
+      var hay = [
+        p.title || "",
+        p.jiangjie || "",
+        p.koujue || "",
+        (p.qLines || []).join(" "),
+        p.answer || "",
+        p.jiexi || ""
+      ].join(" ").toLowerCase();
+      if (hay.indexOf(q) >= 0) {
+        // 高亮命中片段
+        var src = (p.jiangjie || p.koujue || p.jiexi || "");
+        var lowerSrc = src.toLowerCase();
+        var pos = lowerSrc.indexOf(q);
+        var snippet;
+        if (pos >= 0) {
+          var s = Math.max(0, pos - 16);
+          var e = Math.min(src.length, pos + q.length + 48);
+          snippet = (s > 0 ? "…" : "") + src.slice(s, e) + (e < src.length ? "…" : "");
+        } else {
+          snippet = (p.jiangjie || p.koujue || "").slice(0, 60);
+        }
+        hits.push({
+          date: item.date,
+          day: item.day,
+          moduleName: item.moduleName,
+          idx: item.idx,
+          title: p.title,
+          snippet: snippet
+        });
+      }
+    }
+    return hits;
+  }
 
   function toast(msg) {
     var t = document.createElement("div");
@@ -287,7 +426,12 @@ return {
   var state = {
     page: "home",          // home | kaogong | licai
     kgTab: "kg-knowledge", // 考公子 tab
-    lcTab: "lc-hot"        // 理财子 tab
+    lcTab: "lc-hot",       // 理财子 tab
+    // 知识考点 Tab 的本地视图状态
+    kgSelectedDate: D.snapshot_date,   // 当前展示的日期（YYYY-MM-DD）
+    kgCalendarExpanded: false,          // 日历是否展开
+    kgCalendarMonth: null,              // 日历展示月份（YYYY-MM）
+    kgSearchQuery: ""                   // 检索词
   };
 
   /* ── 日期 & 周次 ── */
@@ -363,22 +507,113 @@ return {
       '<div class="stat-chip">📍 ' + esc(kg.moduleName) + '</div>';
   }
 
-  /* -- Tab: 知识考点 -- */
-  function renderKgKnowledge() {
-    var lastMod = D.kaogong.progress.last_module || 0;
-    var dotsHtml = "";
-    D.kaogong.modules.forEach(function (m, i) {
-      var cls = i < lastMod ? "done" : (i === lastMod ? "current" : "");
-      dotsHtml += '<div class="module-dot ' + cls + '">' + (i + 1) + '</div>';
-    });
+  /* -- Tab: 知识考点（日期导航 + 检索 + 当日/历史日推送） -- */
+  // 1. 顶部日期卡（默认 = 本周 7 个日期按钮；展开 = 当月日历）
+  function renderKgDateNav() {
+    if (state.kgCalendarExpanded) return renderKgCalendarCard();
+    return renderKgWeekStripCard();
+  }
 
+  function renderKgWeekStripCard() {
+    var weekDates = weekDatesOf(state.kgSelectedDate);
+    var todayStr = D.snapshot_date;
+    var dotsHtml = "";
+    weekDates.forEach(function (d) {
+      var entry = kgHistoryByDate[d];
+      var dnum = d.slice(8, 10);
+      var isSelected = d === state.kgSelectedDate;
+      var isToday = d === todayStr;
+      var cls = "kg-date-btn" + (entry ? " has" : " no") +
+        (isSelected ? " selected" : "") + (isToday ? " today" : "");
+      var onclick = entry ? 'onclick="WB.selectKgDate(\'' + d + '\')"' : '';
+      dotsHtml += '<button type="button" class="' + cls + '" ' + onclick + '>' +
+        '<div class="kg-date-num">' + dnum + '</div>' +
+        '<div class="kg-date-day">' + weekdayLabel(d) + '</div>' +
+      '</button>';
+    });
+    return '<div class="kg-card fade">' +
+      '<div class="kg-card-head">' +
+        '<h3 class="kg-card-title">📅 本周速览</h3>' +
+        '<button type="button" class="kg-expand-btn" onclick="WB.toggleKgCalendar()">▼ 展开</button>' +
+      '</div>' +
+      '<div class="kg-week-strip">' + dotsHtml + '</div>' +
+      '<div class="kg-week-tip">点击日期按钮可跳转查看当天推送；不点击默认显示当天内容</div>' +
+    '</div>';
+  }
+
+  function renderKgCalendarCard() {
+    var monthKey = state.kgCalendarMonth || state.kgSelectedDate.slice(0, 7);
+    state.kgCalendarMonth = monthKey;
+    var grid = monthGrid(monthKey);
+    var headerDays = ["一", "二", "三", "四", "五", "六", "日"];
+    var cellsHtml = "";
+    grid.rows.forEach(function (row) {
+      row.forEach(function (d) {
+        if (d === null) {
+          cellsHtml += '<div class="kg-cal-day empty"></div>';
+        } else {
+          var dateStr = dateStrOf(grid.year, grid.month, d);
+          var entry = kgHistoryByDate[dateStr];
+          var cls = "kg-cal-day" + (entry ? " has" : " no") +
+            (dateStr === state.kgSelectedDate ? " selected" : "") +
+            (dateStr === D.snapshot_date ? " today" : "");
+          var onclick = entry ? 'onclick="WB.selectKgDate(\'' + dateStr + '\')"' : '';
+          cellsHtml += '<button type="button" class="' + cls + '" ' + onclick + '>' + d + '</button>';
+        }
+      });
+    });
+    var weekdayHeader = headerDays.map(function (h) {
+      return '<div class="kg-cal-weekday">' + h + '</div>';
+    }).join("");
+    return '<div class="kg-card fade">' +
+      '<div class="kg-card-head">' +
+        '<h3 class="kg-card-title">📅 ' + grid.year + ' 年 ' + grid.month + ' 月</h3>' +
+        '<div style="display:flex;gap:6px;">' +
+          '<button type="button" class="kg-expand-btn" onclick="WB.shiftKgMonth(-1)">◀ 上月</button>' +
+          '<button type="button" class="kg-expand-btn" onclick="WB.toggleKgCalendar()">▲ 收起</button>' +
+          '<button type="button" class="kg-expand-btn" onclick="WB.shiftKgMonth(1)">下月 ▶</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="kg-cal-weekdays">' + weekdayHeader + '</div>' +
+      '<div class="kg-cal-grid">' + cellsHtml + '</div>' +
+      '<div class="kg-week-tip">只显示本月日期；带边框的日期可点击进入当天推送；灰色日期无推送</div>' +
+    '</div>';
+  }
+
+  // 2. 关键词检索框（与下方内容区解耦：输入只在内容区重渲染，搜索框保持焦点）
+  function renderKgSearchBox() {
+    return '<div class="kg-card kg-search-card fade">' +
+      '<div class="kg-search-wrap">' +
+        '<span class="kg-search-icon">🔍</span>' +
+        '<input id="kgSearchInput" type="text" placeholder="输入关键词（如「口诀」「民法典」「秦岭」），跨日检索所有知识点" value="' + esc(state.kgSearchQuery) + '" autocomplete="off" />' +
+      '</div>' +
+    '</div>';
+  }
+
+  // 3. 内容区：当有检索词时显示检索结果；否则显示当前选中日的考点
+  function renderKgContentArea() {
+    if (state.kgSearchQuery.trim()) return renderKgSearchResults(state.kgSearchQuery);
+    return renderKgDayPoints(state.kgSelectedDate);
+  }
+
+  function renderKgDayPoints(dateStr) {
+    var entry = kgHistoryByDate[dateStr];
+    if (!entry) {
+      return '<div class="kg-empty fade">' +
+        '<div class="kg-empty-emoji">📭</div>' +
+        '<p>' + esc(dateStr) + ' 当天还没有推送内容。<br/>选个有边框的日期看看，或用上方检索找知识点。</p>' +
+      '</div>';
+    }
+    var parsed = entry.parsed;
     var kpHtml = "";
-    kg.points.forEach(function (p, idx) {
+    parsed.points.forEach(function (p, idx) {
       var stem = p.qLines[0] || "";
-      var opts = p.qLines.slice(1).map(function (o) { return '<div class="opt">' + esc(o) + "</div>"; }).join("");
+      var opts = p.qLines.slice(1).map(function (o) {
+        return '<div class="opt">' + esc(o) + "</div>";
+      }).join("");
       kpHtml +=
         '<div class="kp-card fade">' +
-          '<div class="kp-title"><span class="kp-num">' + (idx+1) + '</span>' + esc(p.title) + '</div>' +
+          '<div class="kp-title"><span class="kp-num">' + (idx + 1) + '</span>' + esc(p.title) + '</div>' +
           (p.jiangjie ?
             '<div class="kp-explain">📌 ' + esc(p.jiangjie) + '</div>' : '') +
           (p.koujue ?
@@ -388,25 +623,59 @@ return {
             (p.answer ? '<div class="kp-ans">答案：<span class="ok">' + esc(p.answer) + '</span></div>' : '') +
             (p.jiexi ? '<div class="kp-exp">💡 ' + esc(p.jiexi) + '</div>' : '') +
           '</details>' +
-          noteBtnHtml("kaogong", D.snapshot_date, idx) +
-          noteDisplayHtml("kaogong", D.snapshot_date, idx) +
+          noteBtnHtml("kaogong", dateStr, idx) +
+          noteDisplayHtml("kaogong", dateStr, idx) +
         '</div>';
     });
-
-    document.getElementById("kg-content").innerHTML =
-      '<div class="kg-card fade">' +
-        '<h3 style="font-size:var(--fs-md);color:var(--kg-accent);margin-bottom:var(--sp-2);">🗺️ 模块进度</h3>' +
-        '<div class="module-ring">' + dotsHtml + '</div>' +
-        '<div style="font-size:var(--fs-xs);color:var(--mist);margin-top:var(--sp-1);">' +
-          '当前：<b>' + esc(kg.moduleName) + '</b> · DAY ' + kg.day +
-        '</div>' +
-      '</div>' +
-      '<div style="display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-3);">' +
-        '<span style="font-size:var(--fs-md);font-weight:500;">📖 今日知识考点</span>' +
-        '<span style="font-family:var(--mono);font-size:var(--fs-xs);color:var(--mist);background:var(--kg-bg);padding:2px 10px;border-radius:10px;">DAY ' + kg.day + '</span>' +
-        '<span style="font-family:var(--mono);font-size:var(--fs-xs);color:var(--mist);">来自「' + D.snapshot_date + '.md」</span>' +
+    var dateLabel = dateStr === D.snapshot_date
+      ? '<span class="kg-date-tag today-tag">📌 今日</span>'
+      : '<span class="kg-date-tag">' + weekdayLabel(dateStr) + '</span>';
+    return '<div class="kg-day-head">' +
+        '<span class="kg-day-title">📖 知识考点</span>' +
+        '<span class="kg-day-day">DAY ' + entry.day + '</span>' +
+        '<span class="kg-day-source">来自「' + dateStr + '.md」</span>' +
+        '<span class="kg-day-module">' + esc(parsed.moduleName) + '</span>' +
+        dateLabel +
       '</div>' +
       kpHtml;
+  }
+
+  function renderKgSearchResults(query) {
+    var hits = searchKgPoints(query);
+    if (hits.length === 0) {
+      return '<div class="kg-empty fade">' +
+        '<div class="kg-empty-emoji">🔍</div>' +
+        '<p>未找到包含「<b>' + esc(query) + '</b>」的知识点。<br/>试试换个关键词，或清除检索回到当天推送。</p>' +
+      '</div>';
+    }
+    var items = hits.map(function (h) {
+      return '<div class="kg-result-item" onclick="WB.openKgResult(\'' + h.date + '\', ' + h.idx + ')">' +
+        '<div class="kg-result-meta">' +
+          '<span class="kg-result-date">' + h.date + '</span>' +
+          '<span class="kg-result-day">DAY ' + h.day + '</span>' +
+          '<span class="kg-result-module">' + esc(h.moduleName) + '</span>' +
+          '<span class="kg-result-num">第 ' + (h.idx + 1) + ' 题</span>' +
+        '</div>' +
+        '<div class="kg-result-title">' + esc(h.title || "未命名知识点") + '</div>' +
+        '<div class="kg-result-snippet">' + esc(h.snippet) + '</div>' +
+      '</div>';
+    }).join("");
+    return '<div class="kg-card fade kg-results-card">' +
+      '<div class="kg-result-header">🔍 检索「<b>' + esc(query) + '</b>」共 ' + hits.length + ' 条结果 · 点击进入该日推送</div>' +
+      items +
+    '</div>';
+  }
+
+  function renderKgKnowledge() {
+    document.getElementById("kg-content").innerHTML =
+      renderKgDateNav() +
+      renderKgSearchBox() +
+      '<div id="kgContentArea">' + renderKgContentArea() + '</div>';
+  }
+  // 仅重渲染内容区（输入检索词时使用，避免搜索框失焦）
+  function refreshKgContentArea() {
+    var area = document.getElementById("kgContentArea");
+    if (area) area.innerHTML = renderKgContentArea();
   }
 
   /* -- Tab: 薄弱项（已合并到周测分析 Tab；保留以避免 tab 找不到 renderer） -- */
@@ -909,8 +1178,66 @@ return {
   window.WB = {
     navigate: switchPage,
     switchTab: switchTab,
-    exportNotes: exportNotesJson
+    exportNotes: exportNotesJson,
+    // 知识考点 Tab：日期 / 日历 / 检索 控制
+    selectKgDate: function (dateStr) {
+      if (!kgHistoryByDate[dateStr]) return;  // 无历史则忽略
+      state.kgSelectedDate = dateStr;
+      state.kgSearchQuery = "";
+      state.kgCalendarMonth = dateStr.slice(0, 7);
+      // 同步清空检索输入框
+      var inp = document.getElementById("kgSearchInput");
+      if (inp) inp.value = "";
+      renderKaogong();
+    },
+    toggleKgCalendar: function () {
+      state.kgCalendarExpanded = !state.kgCalendarExpanded;
+      if (state.kgCalendarExpanded) {
+        state.kgCalendarMonth = state.kgSelectedDate.slice(0, 7);
+      }
+      renderKaogong();
+    },
+    shiftKgMonth: function (delta) {
+      var cur = state.kgCalendarMonth || state.kgSelectedDate.slice(0, 7);
+      state.kgCalendarMonth = shiftMonth(cur, delta);
+      renderKaogong();
+    },
+    openKgResult: function (dateStr, idx) {
+      if (!kgHistoryByDate[dateStr]) return;
+      state.kgSelectedDate = dateStr;
+      state.kgSearchQuery = "";
+      state.kgCalendarExpanded = false;
+      state.kgCalendarMonth = dateStr.slice(0, 7);
+      var inp = document.getElementById("kgSearchInput");
+      if (inp) inp.value = "";
+      renderKaogong();
+      // 滚动到对应知识点卡片（轻微高亮）
+      setTimeout(function () {
+        var cards = document.querySelectorAll("#kgContentArea .kp-card");
+        var card = cards[idx];
+        if (card) {
+          card.scrollIntoView({ behavior: "smooth", block: "center" });
+          card.style.transition = "box-shadow .4s ease";
+          card.style.boxShadow = "0 0 0 3px var(--kg-accent)";
+          setTimeout(function () { card.style.boxShadow = ""; }, 1400);
+        }
+      }, 80);
+    },
+    clearKgSearch: function () {
+      state.kgSearchQuery = "";
+      var inp = document.getElementById("kgSearchInput");
+      if (inp) inp.value = "";
+      renderKaogong();
+    }
   };
+
+  /* ── 检索输入框：仅刷新内容区，搜索框自身不重渲染以保留焦点 ── */
+  document.addEventListener("input", function (e) {
+    if (e.target && e.target.id === "kgSearchInput") {
+      state.kgSearchQuery = e.target.value;
+      refreshKgContentArea();
+    }
+  });
 
   /* ── 笔记按钮事件委托（点开/保存/取消） ── */
   document.addEventListener("click", function (e) {
