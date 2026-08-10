@@ -900,50 +900,31 @@ body {
 .reason-custom-input:focus { border-color: var(--kg-accent); }
 .reason-custom-input::placeholder { color: var(--mist); }
 
-/* 完整知识点（原始日推送讲解） */
-.full-kp {
-  background: linear-gradient(135deg, rgba(74,102,112,.06), rgba(94,123,90,.06));
-  border-left: 3px solid var(--kg-accent);
-  border-radius: var(--radius-sm);
-  padding: var(--sp-3);
-  margin: var(--sp-2) 0;
-}
-.full-kp-head {
-  font-family: var(--mono);
-  font-size: var(--fs-sm);
+/* 完整知识点（原始日推送讲解）——v3 改为跳转按钮 */
+.kg-jump-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(74,102,112,.08);
+  border: 1.5px solid var(--kg-accent);
   color: var(--kg-accent);
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-.full-kp-header {
   font-family: var(--serif);
-  font-size: var(--fs-base);
+  font-size: var(--fs-sm);
   font-weight: 500;
-  color: var(--ink);
-  margin-top: 4px;
-}
-.full-kp-source {
-  font-family: var(--mono);
-  font-size: var(--fs-xs);
-  color: var(--mist);
-  font-weight: 400;
-  margin-left: var(--sp-2);
-}
-.full-kp-explain {
-  font-size: var(--fs-sm);
-  color: var(--ink);
-  line-height: 1.75;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all .2s;
   margin: var(--sp-2) 0;
+  letter-spacing: .02em;
 }
-.full-kp-mnemonic {
-  background: rgba(107,123,94,.1);
-  border-radius: var(--radius-sm);
-  padding: var(--sp-2) var(--sp-3);
-  font-size: var(--fs-sm);
-  color: var(--moss);
-  font-style: italic;
-  margin-top: var(--sp-2);
+.kg-jump-btn:hover {
+  background: var(--kg-accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(74,102,112,.3);
 }
+/* 保留旧 full-kp 样式以防万一 */
+.full-kp-explain { font-size: var(--fs-sm); color: var(--ink); line-height: 1.75; }
 
 /* 旧 wrong-empty 保留 */
 .wrong-empty { text-align: center; padding: var(--sp-7) var(--sp-4); color: var(--mist); }
