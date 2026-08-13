@@ -245,6 +245,29 @@ return {
     });
   });
 
+  // 理财历史按日期索引 + 概念名 → 日期映射（用于"已覆盖概念"按钮跳转）
+  var lcHistoryByDate = {};
+  var lcConceptToDate = {};  // 概念名（去括号）→ 最早出现的日期
+  lcHistory.forEach(function (h) {
+    lcHistoryByDate[h.date] = h;
+    var name = (h.parsed.knowName || "").trim();
+    if (name && name !== "—" && !lcConceptToDate[name]) {
+      lcConceptToDate[name] = h.date;
+    }
+  });
+  // 根据 covered 概念标签（如 "做空(卖空/融券)"）找对应日期
+  function lcConceptDate(label) {
+    var base = String(label || "").split("(")[0].split("（")[0].trim();
+    if (base && lcConceptToDate[base]) return lcConceptToDate[base];
+    // 兜底：包含匹配
+    var keys = Object.keys(lcConceptToDate);
+    for (var i = 0; i < keys.length; i++) {
+      if (base && keys[i].indexOf(base) >= 0) return lcConceptToDate[keys[i]];
+      if (base && base.indexOf(keys[i]) >= 0) return lcConceptToDate[keys[i]];
+    }
+    return "";
+  }
+
   /* ── 笔记存储（localStorage 单设备；云端同步靠导出 notes.json 落 source/） ── */
   var NOTES_LS_KEY = "wb_notes_v1";
   function loadAllNotes() {
@@ -446,7 +469,9 @@ return {
     kgSelectedDate: D.snapshot_date,   // 当前展示的日期（YYYY-MM-DD）
     kgCalendarExpanded: false,          // 日历是否展开
     kgCalendarMonth: null,              // 日历展示月份（YYYY-MM）
-    kgSearchQuery: ""                   // 检索词
+    kgSearchQuery: "",                  // 检索词
+    // 理财「今日知识」Tab 的本地视图状态
+    lcSelectedDate: D.snapshot_date    // 当前展示的理财日期（YYYY-MM-DD）
   };
 
   /* ── 日期 & 周次 ── */
@@ -1070,6 +1095,39 @@ return {
   }
 
   /* -- Tab: 今日知识 -- */
+  // 理财「今日知识」顶部：本周 7 天日期按钮（复用考公样式）
+  function renderLcWeekStrip() {
+    var weekDates = weekDatesOf(state.lcSelectedDate);
+    var todayStr = D.snapshot_date;
+    var dots = "";
+    weekDates.forEach(function (d) {
+      var entry = lcHistoryByDate[d];
+      var dnum = d.slice(8, 10);
+      var isSel = d === state.lcSelectedDate;
+      var isToday = d === todayStr;
+      var cls = "kg-date-btn" + (entry ? " has" : " no") + (isSel ? " selected" : "") + (isToday ? " today" : "");
+      var onclick = entry ? 'onclick="WB.selectLcDate(\'' + d + '\')"' : '';
+      dots += '<button type="button" class="' + cls + '" ' + onclick + '>' +
+        '<div class="kg-date-num">' + dnum + '</div>' +
+        '<div class="kg-date-day">' + weekdayLabel(d) + '</div>' +
+        '</button>';
+    });
+    return '<div class="lc-card fade">' +
+      '<div class="kg-card-head">' +
+        '<h3 class="kg-card-title">📅 本周速览</h3>' +
+      '</div>' +
+      '<div class="kg-week-strip">' + dots + '</div>' +
+      '<div class="kg-week-tip">点击日期按钮查看该日的理财知识；不点击默认显示当天</div>' +
+    '</div>';
+  }
+
+  // 取某天的理财解析（历史日用 lcHistoryByDate，今天兜底用 today_md）
+  function lcParsedFor(date) {
+    var e = lcHistoryByDate[date];
+    if (e) return e.parsed;
+    return (date === D.snapshot_date) ? cj : null;
+  }
+
   function renderLcKnow() {
     var lvlIdx = parseInt((D.licai.progress.level || "L1").replace("L",""), 10) - 1;
     var ladderHtml = "";
@@ -1077,31 +1135,42 @@ return {
       var cls = i < lvlIdx ? "done" : (i === lvlIdx ? "on" : "off");
       ladderHtml += '<div class="ladder-step ' + cls + '"><span class="ladder-num">' + (i+1) + '</span>' + esc(lv) + '</div>';
     });
-    var coveredTags = (D.licai.progress.covered || []).map(function (c) {
-      return '<span class="covered-tag">' + esc(c) + '</span>';
-    }).join("");
+
+    var p = lcParsedFor(state.lcSelectedDate);
+    var knowCard = "";
+    if (p && p.knowName && p.knowName !== "—") {
+      var isToday = state.lcSelectedDate === D.snapshot_date;
+      var dateTag = isToday
+        ? '<span class="kg-date-tag today-tag">📌 今日</span>'
+        : '<span class="kg-date-tag">' + weekdayLabel(state.lcSelectedDate) + '</span>';
+      knowCard =
+        '<div class="know-card fade">' +
+          '<div class="know-title">' + esc(p.knowName) + dateTag + '</div>' +
+          '<div class="know-level">📊 ' + esc(p.knowLevel) + '</div>' +
+          '<ul class="know-list">' +
+            (p.dabai ? '<li><b>大白话：</b>' + esc(p.dabai) + '</li>' : '') +
+            (p.biyu ? '<li><b>生活化比喻：</b>' + esc(p.biyu) + '</li>' : '') +
+            (p.zhuyi ? '<li><b>注意什么：</b>' + esc(p.zhuyi) + '</li>' : '') +
+          '</ul>' +
+          (p.tip ? '<div class="know-tip">💡 ' + esc(p.tip) + '</div>' : '') +
+          noteBtnHtml("licai", state.lcSelectedDate, 0) +
+          noteDisplayHtml("licai", state.lcSelectedDate, 0) +
+        '</div>';
+    } else {
+      knowCard =
+        '<div class="fund-empty fade">' +
+          '<div class="big-emoji">📚</div>' +
+          '<p>' + esc(state.lcSelectedDate) + ' 当天还没有理财知识推送。</p>' +
+        '</div>';
+    }
 
     document.getElementById("lc-content").innerHTML =
+      renderLcWeekStrip() +
       '<div class="lc-card fade">' +
         '<h3 style="font-size:var(--fs-md);color:var(--lc-accent);margin-bottom:var(--sp-3);">📈 认知进阶</h3>' +
         '<div class="ladder">' + ladderHtml + '</div>' +
-        (coveredTags ?
-          '<div style="margin-top:var(--sp-3);"><span style="font-size:var(--fs-xs);color:var(--mist);">已覆盖概念：</span>' +
-          '<div class="covered-tags">' + coveredTags + '</div></div>' :
-          '<p style="font-size:var(--fs-sm);color:var(--mist);margin-top:var(--sp-2);">已覆盖概念将逐日累积于此。</p>') +
       '</div>' +
-      '<div class="know-card fade">' +
-        '<div class="know-title">' + esc(cj.knowName) + '</div>' +
-        '<div class="know-level">📊 ' + esc(cj.knowLevel) + '</div>' +
-        '<ul class="know-list">' +
-          '<li><b>大白话：</b>' + esc(cj.dabai) + '</li>' +
-          '<li><b>生活化比喻：</b>' + esc(cj.biyu) + '</li>' +
-          '<li><b>注意什么：</b>' + esc(cj.zhuyi) + '</li>' +
-        '</ul>' +
-        (cj.tip ? '<div class="know-tip">💡 ' + esc(cj.tip) + '</div>' : '') +
-        noteBtnHtml("licai", D.snapshot_date, 0) +
-        noteDisplayHtml("licai", D.snapshot_date, 0) +
-      '</div>';
+      knowCard;
   }
 
   /* -- Tab: 实时行情 -- */
@@ -1131,6 +1200,37 @@ return {
   }
 
   /* -- Tab: 周末总结（理财）-- */
+  // 已覆盖概念按钮（可点击跳转到对应日期的理财推送）
+  function renderLcCoveredBtns() {
+    var covered = D.licai.progress.covered || [];
+    var btns = covered.map(function (c) {
+      var d = lcConceptDate(c);
+      var label = String(c).split("(")[0].split("（")[0].trim() || c;
+      if (d) {
+        return '<button type="button" class="lc-concept-btn" onclick="WB.jumpToLcDate(\'' + d + '\')">' + esc(label) + '</button>';
+      }
+      return '<span class="lc-concept-btn no-jump" title="未找到对应推送">' + esc(label) + '</span>';
+    }).join("");
+    return '<div class="lc-concept-btns">' + btns + '</div>';
+  }
+
+  // 本周新概念重点回顾（结构化，可点击跳转）
+  function renderLcNewConcepts() {
+    var concepts = D.licai.weekly_concepts || [];
+    if (!concepts.length) return "";
+    var items = concepts.map(function (c) {
+      return '<div class="lc-new-concept" onclick="WB.jumpToLcDate(\'' + c.date + '\')">' +
+        '<div class="lc-new-head">' +
+          '<span class="lc-new-name">' + esc(c.know_name || "—") + '</span>' +
+          '<span class="lc-new-level">' + esc(c.know_level || "") + '</span>' +
+          '<span class="lc-new-date">' + c.date + '</span>' +
+        '</div>' +
+        (c.dabai ? '<div class="lc-new-dabai">' + esc(c.dabai) + '</div>' : '') +
+      '</div>';
+    }).join("");
+    return items;
+  }
+
   function renderLcWeekly() {
     var summary = D.licai.weekly_summary;
     var hot = D.licai.weekly_hot;
@@ -1150,6 +1250,22 @@ return {
       return k.indexOf("licai::") === 0 && notesAll[k] && notesAll[k].trim();
     }).length;
 
+    // 本周知识回顾卡（已覆盖概念按钮 + 本周新概念重点回顾）
+    var covered = D.licai.progress.covered || [];
+    var concepts = D.licai.weekly_concepts || [];
+    var knowledgeReview =
+      '<div class="lc-card fade" style="margin-top:var(--sp-3);">' +
+        '<h3 style="font-size:var(--fs-md);color:var(--lc-accent);margin-bottom:var(--sp-2);">📚 本周知识回顾</h3>' +
+        (covered.length
+          ? '<div style="font-size:var(--fs-xs);color:var(--mist);margin:var(--sp-2) 0 6px;">已覆盖概念（点击跳转到对应推送）：</div>' +
+            renderLcCoveredBtns()
+          : '') +
+        (concepts.length
+          ? '<div style="font-size:var(--fs-xs);color:var(--mist);margin:var(--sp-3) 0 6px;">本周新概念重点回顾（点击查看原文）：</div>' +
+            renderLcNewConcepts()
+          : '') +
+      '</div>';
+
     document.getElementById("lc-content").innerHTML =
       '<div class="weekly-toolbar">' +
         '<span class="toolbar-label">' + rangeTag + ' 已写 ' + noteCount + ' 条笔记</span>' +
@@ -1160,13 +1276,14 @@ return {
             '<div class="md-rendered">' + mdToHtml(hot) + '</div>' +
           '</div>'
         : '') +
+      knowledgeReview +
       (summary
         ? '<div class="lc-card fade" style="margin-top:var(--sp-3);">' +
             '<div class="md-rendered">' + mdToHtml(summary) + '</div>' +
           '</div>'
         : '') +
       '<div style="margin-top:var(--sp-3);font-size:var(--fs-xs);color:var(--mist);text-align:right;">' +
-        '📅 想看某一天的具体内容？切到「今日知识」Tab ↓' +
+        '📅 想看某一天的具体内容？切到「今日知识」Tab 点日期按钮 ↓' +
       '</div>';
   }
 
@@ -1367,6 +1484,20 @@ return {
       state.kgCalendarExpanded = false;
       state.kgSearchQuery = "";
       renderKaogong();
+    },
+    /* 理财「今日知识」Tab：选中日期（本周按钮点击） */
+    selectLcDate: function (dateStr) {
+      if (!lcHistoryByDate[dateStr]) return;
+      state.lcSelectedDate = dateStr;
+      renderLicai();
+    },
+    /* 理财概念按钮跳转到对应日期推送 */
+    jumpToLcDate: function (dateStr) {
+      if (!lcHistoryByDate[dateStr]) return;
+      if (state.page !== "licai") switchPage("licai");
+      if (state.lcTab !== "lc-know") switchTab("lc", "lc-know");
+      state.lcSelectedDate = dateStr;
+      renderLicai();
     }
 
   };
