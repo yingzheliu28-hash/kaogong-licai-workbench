@@ -2,7 +2,7 @@
 
 > 给接手这个项目的人（包括下一个对话里的新 agent）一份**自包含的全景说明**：项目是什么、怎么跑、文件在哪、怎么改、迁移时要注意什么。
 
-最后更新：**2026-08-11 19:27**（随项目进度滚动更新，改完大迭代请同步到本文件 + `进度说明.md`）
+最后更新：**2026-08-13 16:45**（随项目进度滚动更新，改完大迭代请同步到本文件 + `进度说明.md`）
 
 ---
 
@@ -14,22 +14,22 @@
 
 ## 2. ⚠️ 关键路径说明（最高优先级，请先读）
 
-> **核心约定（2026-08-07 v3 决定）**：**项目文件夹 `D:\Desktop\考公理财工作台_完整迁移包\` 完全自包含**——02_每日推送源/ 是 12:30 自动化的写入点 + 所有源数据 + 每周小测子目录，全部在这里。**真实桌面 `D:\Desktop\每日wb推送\` 仅作历史归档保留，不再被工作流读取**。
+> **核心约定（2026-08-13 v5）**：**项目文件夹完全自包含**——02_每日推送源/ 是自动化的写入点 + 所有源数据 + 每周小测子目录，全部在这里。**三个 Python 脚本全部通过 `__file__` 自动检测项目根，跨盘跨机无需改任何路径或代码**。历史归档 `每日wb推送\` 仅作保留，不再被工作流读取。
 
 | 项 | 路径 | 备注 |
 |---|---|---|
-| **canonical 项目文件夹** | **`C:\Users\EDY\考公理财工作台_完整迁移包\`**（推荐；可在任意路径） | **唯一总目录**；Python 脚本自动检测项目根，跨盘跨机无需改路径 |
-| ├ 01_站点前端 | 项目内 `01_站点前端\` | index.html / styles.css / app.js / data.js / build_cloud.py |
+| **canonical 项目文件夹** | **任意路径**（推荐 `C:\Users\<用户名>\考公理财工作台_完整迁移包\`） | **唯一总目录**；Python 脚本自动检测项目根，跨盘跨机无需改路径 |
+| ├ 01_站点前端 | 项目内 `01_站点前端\` | index.html / styles.css / app.js / data.js / build_cloud.py / github_workflow_sync.yml |
 | ├ 02_每日推送源 | 项目内 `02_每日推送源\` | **唯一数据源** |
 | ├ 03_部署脚本 | 项目内 `03_部署脚本\` | 全部自动检测路径 |
 | ├ 04_密钥与配置 | 项目内 `04_密钥与配置\` | GitHub PAT + SSH |
-| └ 05_项目交接 | 项目内 `05_项目交接\` | README + 进度说明 + 换电脑迁移指南 |
-| **历史归档（不再读写）** | `D:\Desktop\每日wb推送\` | 11 天历史 + 项目交接/快照；**保留不删**，但工作流不再读它 |
-| **GitHub 仓库** | https://github.com/yingzheliu28-hash/kaogong-licai-workbench | source/ 收录全部 md + 周维度文件 |
+| └ 05_项目交接 | 项目内 `05_项目交接\` | README + 进度说明 + 周测答卷处理流程 + 换电脑迁移指南 + **新电脑自动化提示词** |
+| **历史归档（不再读写）** | `每日wb推送\` | 11 天历史 + 项目交接/快照；**保留不删**，但工作流不再读它 |
+| **GitHub 仓库** | https://github.com/yingzheliu28-hash/kaogong-licai-workbench | source/ 收录全部 md + 05_项目交接/ 完整备份 |
 | **GitHub Pages 站点** | https://yingzheliu28-hash.github.io/kaogong-licai-workbench/ | 浏览器实际访问的站点 |
-| **Python 解释器** | `C:\Users\EDY\.workbuddy\binaries\python\versions\3.13.12\python.exe` | WorkBuddy 托管；用绝对路径 |
-| **GitHub PAT** | `C:\Users\EDY\.workbuddy\secrets\wb_github_pat` | contents:write + workflow |
-| **12:30 自动化 cwds** | `["D:/Desktop/考公理财工作台_完整迁移包/02_每日推送源"]` | LLM 直接写入项目内 02_；与项目文件夹完全自包含 |
+| **Python 解释器** | `C:\Users\<用户名>\.workbuddy\binaries\python\versions\3.13.12\python.exe` | WorkBuddy 托管；用绝对路径 |
+| **GitHub PAT** | `C:\Users\<用户名>\.workbuddy\secrets\wb_github_pat` | contents:write + workflow |
+| **自动化 cwds** | `<项目根>\02_每日推送源` | 唯一需要手填绝对路径的地方；prompt 内全用相对路径 |
 
 ### ⚠️ Sandbox 镜像 ≠ 真实桌面（教训必读）
 
@@ -84,19 +84,19 @@ D:\Desktop\考公理财工作台_完整迁移包\        ← canonical 项目根
 ## 4. 数据流（v3：项目自包含）
 
 ```
-[12:30 LLM 自动化]  cwd = D:/Desktop/考公理财工作台_完整迁移包/02_每日推送源
+[11:00 LLM 自动化]  cwd = <项目根>\02_每日推送源
   ↓ LLM 写 md 到：
-D:\Desktop\考公理财工作台_完整迁移包\02_每日推送源\公考常识判断\YYYY-MM-DD.md
-D:\Desktop\考公理财工作台_完整迁移包\02_每日推送源\财经热点知识\YYYY-MM-DD.md
+<项目根>\02_每日推送源\公考常识判断\YYYY-MM-DD.md
+<项目根>\02_每日推送源\财经热点知识\YYYY-MM-DD.md
                                                   ↓ wb_push_source.py
 GitHub source/{kaogong,licai}/  （含每周小测/ 子目录 + 周维度文件）
   ↓ build_cloud.py（本地或云端 workflow）
-D:\Desktop\考公理财工作台_完整迁移包\01_站点前端\data.js
+<项目根>\01_站点前端\data.js
   ↓ wb_deploy_api.py
 GitHub Pages
 ```
 
-**整个工作台迁移/备份 = 打包 `D:\Desktop\考公理财工作台_完整迁移包\` 这一个文件夹**。
+**整个工作台迁移/备份 = 打包 `考公理财工作台_完整迁移包\` 这一个文件夹**（脚本自动检测路径，任意目录均可）。
 
 ---
 
@@ -137,15 +137,18 @@ data.js                           ← 单一数据快照（window.WB_DATA）
 
 ## 7. 自动化清单（当前）
 
-⚠️ 换电脑后需重建全部自动化，详见 `换电脑迁移指南.md`。
+⚠️ 换电脑后需重建全部自动化，详见 `换电脑迁移指南.md` + `新电脑自动化提示词.md`。
 
 | 名称 | 触发 | 行为 |
 |---|---|---|
-| 考公常识判断每日推送 | 每天 12:30；生成 md + 跑 wb_push_source + build_cloud + wb_deploy_api |
-| automation-1785209090441 | 财经热点知识每日推送 | 每天 12:30 | 同上（理财轨道） |
-| GitHub Actions sync.yml | 云端自动构建 | 每 2h + push(source/**) + manual | 用 GitHub 仓庌 source/ 重建 data.js，推 main |
+| 考公常识判断每日推送 | 每天 11:00 | 生成 md + 跑 wb_push_source + build_cloud + wb_deploy_api |
+| 财经热点知识每日推送 | 每天 11:00 | 同上（理财轨道） |
+| 考公本周要点周日周更 | 每周日 20:00 | 覆盖写 `本周知识要点.md` |
+| 考公周末小测周六出题源 | 每周六 20:00 | 生成 5-12 题到 `每周小测/<下周日>-本周小测.md` |
+| WorkBuddy 每日签到 | 每天 10:00 | 签到领积分 |
+| GitHub Actions sync.yml | 云端自动构建 | 每 2h + push(source/**) + manual；用 source/ 重建 data.js 推 main |
 
-12:30 自动化跑完 → 当天内容即时上线；后续云端每 2h 兜底。
+自动化跑完 → 当天内容即时上线；后续云端每 2h 兜底。
 
 ---
 
@@ -153,8 +156,8 @@ data.js                           ← 单一数据快照（window.WB_DATA）
 
 | 现象 | 检查 |
 |---|---|
-| 站点内容没更新 | `wb_deploy_api.py data.js` 状态；GitHub 最新 commit |
-| 12:30 写文件失败 | 12:30 cwds 是不是 `D:/Desktop/考公理财工作台_完整迁移包/02_每日推送源` |
+| 站点内容没更新 | `wb_deploy_api.py` 状态；GitHub 最新 commit |
+| 自动化写文件失败 | cwds 是不是 `<项目根>\02_每日推送源` |
 | 周测分析为空 | `02_每日推送源/公考常识判断/每周小测/` 下是否有 `*-成绩.md` |
 | 错题本为空 | `02_每日推送源/公考常识判断/我的错题本.md` 是否存在 |
 | 周末总结不显示 | `02_每日推送源/公考常识判断/本周知识要点.md` 是否存在 |
@@ -164,6 +167,6 @@ data.js                           ← 单一数据快照（window.WB_DATA）
 ## 9. 给接手者 + 换电脑指南
 
 - **了解项目**：读本文件（README.md）+ `进度说明.md`
-- **换电脑**：读 `换电脑迁移指南.md`（含完整自动化 prompt + 6 步 checklist）
+- **换电脑**：读 `换电脑迁移指南.md`（5 步 checklist）+ `新电脑自动化提示词.md`（5 条可直接复制的 prompt）
 - **故障排查**：本文件 §8
 - **手动修复**：`wb_push_source.py` + `build_cloud.py` + `wb_deploy_api.py`
