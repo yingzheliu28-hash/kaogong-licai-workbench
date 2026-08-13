@@ -471,7 +471,9 @@ return {
     kgCalendarMonth: null,              // 日历展示月份（YYYY-MM）
     kgSearchQuery: "",                  // 检索词
     // 理财「今日知识」Tab 的本地视图状态
-    lcSelectedDate: D.snapshot_date    // 当前展示的理财日期（YYYY-MM-DD）
+    lcSelectedDate: D.snapshot_date,   // 当前展示的理财日期（YYYY-MM-DD）
+    lcCalendarExpanded: false,          // 日历是否展开
+    lcCalendarMonth: null               // 日历展示月份（YYYY-MM）
   };
 
   /* ── 日期 & 周次 ── */
@@ -1095,29 +1097,77 @@ return {
   }
 
   /* -- Tab: 今日知识 -- */
-  // 理财「今日知识」顶部：本周 7 天日期按钮（复用考公样式）
-  function renderLcWeekStrip() {
+  // 理财日期导航（仿考公）：展开态看月历，折叠态看本周速览
+  function renderLcDateNav() {
+    if (state.lcCalendarExpanded) return renderLcCalendarCard();
+    return renderLcWeekStripCard();
+  }
+
+  // 本周 7 天日期按钮（折叠态）
+  function renderLcWeekStripCard() {
     var weekDates = weekDatesOf(state.lcSelectedDate);
     var todayStr = D.snapshot_date;
-    var dots = "";
+    var dotsHtml = "";
     weekDates.forEach(function (d) {
       var entry = lcHistoryByDate[d];
       var dnum = d.slice(8, 10);
-      var isSel = d === state.lcSelectedDate;
+      var isSelected = d === state.lcSelectedDate;
       var isToday = d === todayStr;
-      var cls = "kg-date-btn" + (entry ? " has" : " no") + (isSel ? " selected" : "") + (isToday ? " today" : "");
+      var cls = "kg-date-btn" + (entry ? " has" : " no") +
+        (isSelected ? " selected" : "") + (isToday ? " today" : "");
       var onclick = entry ? 'onclick="WB.selectLcDate(\'' + d + '\')"' : '';
-      dots += '<button type="button" class="' + cls + '" ' + onclick + '>' +
+      dotsHtml += '<button type="button" class="' + cls + '" ' + onclick + '>' +
         '<div class="kg-date-num">' + dnum + '</div>' +
         '<div class="kg-date-day">' + weekdayLabel(d) + '</div>' +
-        '</button>';
+      '</button>';
     });
     return '<div class="lc-card fade">' +
       '<div class="kg-card-head">' +
         '<h3 class="kg-card-title">📅 本周速览</h3>' +
+        '<button type="button" class="kg-expand-btn" onclick="WB.toggleLcCalendar()">▼ 展开</button>' +
       '</div>' +
-      '<div class="kg-week-strip">' + dots + '</div>' +
+      '<div class="kg-week-strip">' + dotsHtml + '</div>' +
       '<div class="kg-week-tip">点击日期按钮查看该日的理财知识；不点击默认显示当天</div>' +
+    '</div>';
+  }
+
+  // 月历（展开态）
+  function renderLcCalendarCard() {
+    var monthKey = state.lcCalendarMonth || state.lcSelectedDate.slice(0, 7);
+    state.lcCalendarMonth = monthKey;
+    var grid = monthGrid(monthKey);
+    var headerDays = ["一", "二", "三", "四", "五", "六", "日"];
+    var cellsHtml = "";
+    grid.rows.forEach(function (row) {
+      row.forEach(function (d) {
+        if (d === null) {
+          cellsHtml += '<div class="kg-cal-day empty"></div>';
+        } else {
+          var dateStr = dateStrOf(grid.year, grid.month, d);
+          var entry = lcHistoryByDate[dateStr];
+          var cls = "kg-cal-day" + (entry ? " has" : " no") +
+            (dateStr === state.lcSelectedDate ? " selected" : "") +
+            (dateStr === D.snapshot_date ? " today" : "");
+          var onclick = entry ? 'onclick="WB.selectLcDate(\'' + dateStr + '\')"' : '';
+          cellsHtml += '<button type="button" class="' + cls + '" ' + onclick + '>' + d + '</button>';
+        }
+      });
+    });
+    var weekdayHeader = headerDays.map(function (h) {
+      return '<div class="kg-cal-weekday">' + h + '</div>';
+    }).join("");
+    return '<div class="lc-card fade">' +
+      '<div class="kg-card-head">' +
+        '<h3 class="kg-card-title">📅 ' + grid.year + ' 年 ' + grid.month + ' 月</h3>' +
+        '<div style="display:flex;gap:6px;">' +
+          '<button type="button" class="kg-expand-btn" onclick="WB.shiftLcMonth(-1)">◀ 上月</button>' +
+          '<button type="button" class="kg-expand-btn" onclick="WB.toggleLcCalendar()">▲ 收起</button>' +
+          '<button type="button" class="kg-expand-btn" onclick="WB.shiftLcMonth(1)">下月 ▶</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="kg-cal-weekdays">' + weekdayHeader + '</div>' +
+      '<div class="kg-cal-grid">' + cellsHtml + '</div>' +
+      '<div class="kg-week-tip">只显示本月日期；带边框的日期可点击进入当天推送；灰色日期无推送</div>' +
     '</div>';
   }
 
@@ -1165,7 +1215,7 @@ return {
     }
 
     document.getElementById("lc-content").innerHTML =
-      renderLcWeekStrip() +
+      renderLcDateNav() +
       '<div class="lc-card fade">' +
         '<h3 style="font-size:var(--fs-md);color:var(--lc-accent);margin-bottom:var(--sp-3);">📈 认知进阶</h3>' +
         '<div class="ladder">' + ladderHtml + '</div>' +
@@ -1214,7 +1264,7 @@ return {
     return '<div class="lc-concept-btns">' + btns + '</div>';
   }
 
-  // 本周新概念重点回顾（结构化，可点击跳转）
+  // 本周新概念重点回顾（结构化，可点击跳转）+ 完整知识点（来自原始日推送）
   function renderLcNewConcepts() {
     var concepts = D.licai.weekly_concepts || [];
     if (!concepts.length) return "";
@@ -1225,7 +1275,10 @@ return {
           '<span class="lc-new-level">' + esc(c.know_level || "") + '</span>' +
           '<span class="lc-new-date">' + c.date + '</span>' +
         '</div>' +
-        (c.dabai ? '<div class="lc-new-dabai">' + esc(c.dabai) + '</div>' : '') +
+        (c.dabai ? '<div class="lc-new-dabai"><b>一句人话：</b>' + esc(c.dabai) + '</div>' : '') +
+        (c.biyu ? '<div class="lc-new-biyu"><b>举个例子：</b>' + esc(c.biyu) + '</div>' : '') +
+        (c.zhuyi ? '<div class="lc-new-zhuyi"><b>对我有什么用：</b>' + esc(c.zhuyi) + '</div>' : '') +
+        (c.tip ? '<div class="lc-new-tip"><b>小白提示：</b>' + esc(c.tip) + '</div>' : '') +
       '</div>';
     }).join("");
     return items;
@@ -1277,11 +1330,6 @@ return {
           '</div>'
         : '') +
       knowledgeReview +
-      (summary
-        ? '<div class="lc-card fade" style="margin-top:var(--sp-3);">' +
-            '<div class="md-rendered">' + mdToHtml(summary) + '</div>' +
-          '</div>'
-        : '') +
       '<div style="margin-top:var(--sp-3);font-size:var(--fs-xs);color:var(--mist);text-align:right;">' +
         '📅 想看某一天的具体内容？切到「今日知识」Tab 点日期按钮 ↓' +
       '</div>';
@@ -1497,9 +1545,24 @@ return {
       if (state.page !== "licai") switchPage("licai");
       if (state.lcTab !== "lc-know") switchTab("lc", "lc-know");
       state.lcSelectedDate = dateStr;
+      state.lcCalendarExpanded = false;
+      state.lcCalendarMonth = dateStr.slice(0, 7);
+      renderLicai();
+    },
+    /* 理财日期导航：展开/收起月历 */
+    toggleLcCalendar: function () {
+      state.lcCalendarExpanded = !state.lcCalendarExpanded;
+      if (state.lcCalendarExpanded && !state.lcCalendarMonth) {
+        state.lcCalendarMonth = state.lcSelectedDate.slice(0, 7);
+      }
+      renderLicai();
+    },
+    /* 理财月历：上月/下月切换 */
+    shiftLcMonth: function (delta) {
+      var cur = state.lcCalendarMonth || state.lcSelectedDate.slice(0, 7);
+      state.lcCalendarMonth = shiftMonth(cur, delta);
       renderLicai();
     }
-
   };
 
   /* ── 检索输入框：仅刷新内容区，搜索框自身不重渲染以保留焦点 ── */
