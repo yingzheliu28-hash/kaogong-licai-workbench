@@ -455,6 +455,88 @@ body {
   padding: 2px 10px; border-radius: 12px; color: var(--lc-accent);
 }
 
+/* 理财：已覆盖概念可跳转按钮（周末总结·本周知识回顾） */
+.lc-concept-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--sp-2); }
+.lc-concept-btn {
+  background: var(--lc-glow);
+  border: 1px solid var(--lc-border);
+  color: var(--lc-accent);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  padding: 5px 14px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.lc-concept-btn:hover {
+  background: var(--lc-accent);
+  color: #fff;
+  border-color: var(--lc-accent);
+  box-shadow: 0 2px 8px rgba(139,105,20,.28);
+}
+.lc-concept-btn.no-jump {
+  cursor: default;
+  opacity: .45;
+  border-style: dashed;
+}
+.lc-concept-btn.no-jump:hover {
+  background: var(--lc-glow);
+  color: var(--lc-accent);
+  border-color: var(--lc-border);
+  box-shadow: none;
+}
+
+/* 理财：本周新概念重点回顾条目 */
+.lc-new-concept {
+  background: var(--lc-glow);
+  border: 1px solid var(--lc-border);
+  border-left: 3px solid var(--lc-accent);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  margin: 6px 0;
+  cursor: pointer;
+  transition: all .2s;
+}
+.lc-new-concept:hover {
+  background: #fff;
+  box-shadow: var(--shadow-md);
+  transform: translateX(2px);
+}
+.lc-new-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.lc-new-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+.lc-new-level {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--lc-accent);
+  background: var(--lc-glow);
+  padding: 1px 8px;
+  border-radius: 8px;
+}
+.lc-new-date {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--mist);
+  margin-left: auto;
+}
+.lc-new-dabai {
+  font-size: var(--fs-xs);
+  color: var(--mist);
+  line-height: 1.6;
+  margin-top: 4px;
+}
+
+/* 理财卡片里的日期导航标题配色（复用考公 kg-card-title 结构，改为理财金色） */
+.lc-card .kg-card-title { color: var(--lc-accent); }
+
 /* ═════════════════════════════════
    页脚
    ═════════════════════════════════ */
