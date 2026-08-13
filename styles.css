@@ -530,8 +530,25 @@ body {
 .lc-new-dabai {
   font-size: var(--fs-xs);
   color: var(--mist);
-  line-height: 1.6;
+  line-height: 1.7;
+  margin-top: 6px;
+  white-space: pre-wrap;
+}
+.lc-new-biyu, .lc-new-zhuyi, .lc-new-tip {
+  font-size: var(--fs-xs);
+  color: var(--ink);
+  line-height: 1.7;
   margin-top: 4px;
+  padding: 6px 10px;
+  background: rgba(176,141,87,.06);
+  border-left: 2px solid var(--lc-border);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+}
+.lc-new-tip {
+  background: rgba(255,200,87,.08);
+  border-left-color: #f0b400;
+  font-style: italic;
 }
 
 /* 理财卡片里的日期导航标题配色（复用考公 kg-card-title 结构，改为理财金色） */
