@@ -17,8 +17,14 @@
 import os, sys, json, re, datetime, urllib.request, urllib.error, argparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# 项目根：build_cloud.py 位于 01_站点前端/ 下，往上一级即项目根（自包含，不依赖绝对路径）
+PKG_ROOT = os.path.dirname(HERE)
 SOURCE_DIR = os.environ.get("SOURCE_DIR") or os.path.join(HERE, "source")
 DATA_OUT = os.environ.get("DATA_OUT") or os.path.join(HERE, "data.js")
+# 本地项目内源目录（v4 自包含）；云端构建时不存在，回退到 source/
+LOCAL_KG_DIR = os.path.join(PKG_ROOT, "02_每日推送源", "公考常识判断")
+LOCAL_LC_DIR = os.path.join(PKG_ROOT, "02_每日推送源", "财经热点知识")
+LOCAL_DATA_OUT = os.path.join(PKG_ROOT, "01_站点前端", "data.js")
 
 # 固定结构
 KG_MODULES = ["政治", "法律", "经济", "人文历史", "科技与生活", "地理国情", "管理公文"]
@@ -134,13 +140,15 @@ def parse_quiz_score_md(path):
     # 把 "政治·会议" 拆成主模块 "政治"（取 · 前段）
     wrong = []
     for r in wrong_rows:
-        module_main = r["module_full"].split("·")[0].strip() if "·" in r["module_full"] else r["module_full"]
+        topic = r["module_full"].strip()
+        module_main = topic.split("·")[0].strip() if "·" in topic else topic
         reason = r["reason_raw"].strip()
         if reason in ("—", "-", ""):
             reason = "未标注"
         wrong.append({
             "q_idx": r["q_idx"],
             "module": module_main,
+            "topic": topic,                  # 保留全 topic（用于回溯原始日推送）
             "user_answer": r["user_answer"],
             "correct_answer": r["correct_answer"],
             "reason": reason,
@@ -157,16 +165,178 @@ def parse_quiz_score_md(path):
 
 
 def find_quiz_title(weekly_quiz_md, q_idx):
-    """从 `每周小测/<日期>-本周小测.md` 里按 q_idx 反查 title。"""
+    """从 `每周小测/<日期>-本周小测.md` 里按 q_idx 反查 title（保留旧兼容）。"""
     if not weekly_quiz_md:
         return ""
-    # 匹配 `**N.** 题干...` 或 `**1.** xxx` 或 `1. xxx` 或 `**1** ...`
-    # 本项目的本周小测格式："**1.** 下列关于党的重要会议的说法，正确的是："
     pat = re.compile(r"^\*\*\s*(\d+)\s*\.\*\*\s*([^\n]+)", re.M)
     for m in pat.finditer(weekly_quiz_md):
         if int(m.group(1)) == q_idx:
             return m.group(2).strip()
     return ""
+
+
+def find_quiz_question(weekly_quiz_md, q_idx):
+    """从 `每周小测/<日期>-本周小测.md` 里按 q_idx 解析完整题目。
+
+    返回 dict(stem, options, answer, explanation, knowledge_point)；
+    解析失败返回 None。options 是 [(letter, text)] 列表。
+    """
+    if not weekly_quiz_md:
+        return None
+    # 题目块起点：**N.** 或 **N.**（不定项）
+    start_pat = re.compile(r"^\*\*\s*(\d+)\s*\.\*\*\s*(.+?)\s*$", re.M)
+    m_start = None
+    for m in start_pat.finditer(weekly_quiz_md):
+        if int(m.group(1)) == q_idx:
+            m_start = m
+            break
+    if not m_start:
+        return None
+
+    stem_full = m_start.group(2).strip()
+    # 去掉 (不定项) / （多选） / （单选） 等题型标记
+    stem = re.sub(r"^[（(][^）)]+[）)]\s*", "", stem_full).strip()
+
+    # 题目块终点：下一题 **N+1.** 或 --- 分隔符
+    pos_start = m_start.end()
+    end_pat = re.compile(r"^\*\*\s*" + str(q_idx + 1) + r"\s*\.\*\*", re.M)
+    m_end = end_pat.search(weekly_quiz_md, pos_start)
+    if m_end:
+        block = weekly_quiz_md[pos_start:m_end.start()]
+    else:
+        sep = re.search(r"\n---\n", weekly_quiz_md[pos_start:])
+        block = weekly_quiz_md[pos_start:pos_start + sep.start()] if sep else weekly_quiz_md[pos_start:]
+
+    # 解析选项：兼容单行多选 + 多行分选；优先取选项多的解析
+    options = []
+    block_lines = [l.strip() for l in block.split("\n") if l.strip()]
+
+    # 路径 1：多行（每行一个选项）
+    per_line = []
+    for line in block_lines:
+        m_opt = re.match(r"^([A-Z])\.\s*(.+)$", line)
+        if m_opt:
+            per_line.append((m_opt.group(1), m_opt.group(2).strip()))
+
+    # 路径 2：单行多选项（A. xx　B. xx ...），用 findall 解决首项缺前置空白的问题
+    single_line = []
+    for line in block_lines:
+        # 匹配每个 "X. <text>" 段（X 在行首或紧跟空白），text 至下一个 "X. " 或行尾
+        matches = re.findall(
+            r"(?:^|\s)([A-Z])\.\s*([^A-Z]+?)(?=\s+[A-Z]\.|$)",
+            line,
+        )
+        if len(matches) >= 2 and len(matches) > len(single_line):
+            single_line = [(m[0], m[1].strip()) for m in matches]
+
+    # 取选项多的那份
+    options = single_line if len(single_line) > len(per_line) else per_line
+
+    # 答案 + 解析 + 知识点（从密钥段提）
+    ans_pat = re.compile(
+        r"^\s*" + str(q_idx) + r"\s*[\.、]\s*答案[：:]\s*([^\s|｜]+)\s*[|｜]\s*解析[：:]\s*(.+?)(?=\n\s*\n|\n\s*\d+\s*[\.、]|\n\s*---\n|\Z)",
+        re.M | re.S,
+    )
+    m_ans = ans_pat.search(weekly_quiz_md)
+    answer = ""
+    explanation = ""
+    knowledge_point = ""
+    if m_ans:
+        answer = m_ans.group(1).strip()
+        explanation = m_ans.group(2).strip()
+        # 1. 显式考点标记：**考点：xxx**
+        kp_match = re.search(r"\*\*\s*考点[：:]\s*([^*]+?)\s*\*\*", explanation)
+        if kp_match:
+            knowledge_point = kp_match.group(1).strip()
+        else:
+            # 2. 兜底：取解析首句（肯定描述，通常是新增/正确部分）
+            #    解析常见格式 "X 是 ...；Y 不是 ..." → 首段是知识本身
+            chunks = re.split(r"[；;]", explanation)
+            for c in chunks:
+                c = c.strip()
+                if 4 <= len(c) <= 100:
+                    knowledge_point = c.rstrip("。.") + ("。" if not c.endswith("。") else "")
+                    break
+            if not knowledge_point:
+                # 整个解析当知识点
+                knowledge_point = explanation[:200]
+
+    return {
+        "stem": stem,
+        "options": options,
+        "answer": answer,
+        "explanation": explanation,
+        "knowledge_point": knowledge_point,
+    }
+
+
+def _extract_quiz_date_range(weekly_quiz_md, week_date_str):
+    """从本周小测 md 头部提取覆盖日期范围，如 "08/03–08/09"。
+
+    返回 (start_date, end_date) ISO 字符串，年份取 week_date_str 的年份；
+    找不到正则匹配则兜底为 [week_date - 6 天, week_date]。
+    """
+    if not week_date_str:
+        return None, None
+    year = week_date_str[:4]
+    if weekly_quiz_md:
+        m = re.search(r"(\d{1,2})/(\d{1,2})\s*[-–~]\s*(\d{1,2})/(\d{1,2})", weekly_quiz_md)
+        if m:
+            return ("%s-%02d-%02d" % (year, int(m.group(1)), int(m.group(2))),
+                    "%s-%02d-%02d" % (year, int(m.group(3)), int(m.group(4))))
+    # 兜底：用 quiz 日期向前推 6 天（大多数周测覆盖最近 7 天）
+    try:
+        d = datetime.date.fromisoformat(week_date_str)
+        return (d - datetime.timedelta(days=6)).isoformat(), week_date_str
+    except Exception:
+        return None, None
+
+
+def find_full_knowledge_for_wrong(kg_dir, week_start, week_end, wrong_module):
+    """根据错题的 topic 字段，回溯到本周原始日推送 md，找到匹配日及标题。
+
+    返回 dict(source_date, title) 或 None。
+    （v3：不再提取完整讲解，改为前端跳转到当日"知识考点"Tab）
+    """
+    if not wrong_module:
+        return None
+    parts = wrong_module.split("·", 1)
+    sub = parts[1].strip() if len(parts) > 1 else parts[0].strip()
+    primary = parts[0].strip()
+
+    # 关键词分级（从精确到宽泛）：sub → sub 去掉常见后缀 → sub 前 4 字 → primary 模块
+    keywords = []
+    if sub and sub != primary:
+        keywords.append(sub)
+        for suf in ["种类", "类型", "范畴", "内容", "问题", "情况", "条款", "要件"]:
+            if sub.endswith(suf) and len(sub) > len(suf) + 2:
+                keywords.append(sub[: -len(suf)])
+                break
+        if len(sub) >= 4:
+            keywords.append(sub[:4])
+    keywords.append(primary)
+
+    weekly_pushes = []
+    for p in all_md_paths(kg_dir):
+        d = os.path.basename(p)[:10]
+        if d and week_start <= d <= week_end:
+            weekly_pushes.append((d, p))
+    weekly_pushes.sort()
+
+    # 在本周内按 keywords 优先级找首个含该关键词的知识点
+    for kw in keywords:
+        for d, p in weekly_pushes:
+            try:
+                with open(p, encoding="utf-8") as f:
+                    txt = f.read()
+            except Exception:
+                continue
+            if kw and kw in txt:
+                parsed = parse_kg_md(txt)
+                for pt in parsed:
+                    if kw in (pt["title"] + (pt.get("explain") or "")):
+                        return {"source_date": d, "title": pt["title"]}
+    return None
 
 
 def read_kaogong_quiz_state(kg_dir):
@@ -207,10 +377,22 @@ def read_kaogong_quiz_state(kg_dir):
         one = parse_quiz_score_md(score_path)
         if not one:
             continue
-        # 用对应日期的本周小测 md 反查 title
+        # 用对应日期的本周小测 md 反查 完整题目（题干+选项+解析+知识点）
         qm = read_optional_file(quiz_files.get(week))
+        # 从小测 md 头部提取覆盖日期范围（如 "08/03–08/09"）
+        week_start, week_end = _extract_quiz_date_range(qm, week)
         for w in one["wrong"]:
             w["title"] = find_quiz_title(qm, w["q_idx"])
+            qd = find_quiz_question(qm, w["q_idx"])
+            if qd:
+                w["question"] = qd
+            else:
+                w["question"] = {"stem": "", "options": [], "answer": "", "explanation": "", "knowledge_point": ""}
+            # 回溯原始���推送：取完整「讲解」（不受小测解析简化版的限制）
+            if week_start and week_end and w.get("topic"):
+                fk = find_full_knowledge_for_wrong(kg_dir, week_start, week_end, w["topic"])
+                if fk:
+                    w["question"]["full_knowledge"] = fk
         history.append({
             "date": week,
             "week": week,
@@ -417,7 +599,7 @@ _KG_SRC_RE = re.compile(r"📝 \*\*真题\*\*[（(]([^）)]+)[）)]")
 
 
 def parse_kg_md(text):
-    """从每日 md 抽出每个知识点的标题/讲解/口诀/真题/答案/来源。"""
+    """从每日 md 抽出每个知识点的标题/讲解/口诀/真题/选项/答案/来源。"""
     points = []
     # 按 "### 知识点" 分割
     chunks = re.split(r"### 知识点\s*\d+", text)
@@ -435,6 +617,12 @@ def parse_kg_md(text):
         # 答案
         ans_m = _KG_ANS_RE.search(chunk)
         ans = ans_m.group(1).strip() if ans_m else ""
+        # 讲解（新法重点呈现：小测的解析只是简化版，��取原始日推送的完整讲解）
+        explain_m = _KG_EXPLAIN_RE.search(chunk)
+        explain = explain_m.group(1).strip() if explain_m else ""
+        # 口诀
+        mnemonic_m = _KG_MNEMONIC_RE.search(chunk)
+        mnemonic = mnemonic_m.group(1).strip() if mnemonic_m else ""
         # 真题题干 + 选项（取 📝 块第一组）
         ques_m = _KG_QUES_RE.search(chunk)
         if ques_m:
@@ -443,40 +631,51 @@ def parse_kg_md(text):
         else:
             q = ""
             opts = []
-        points.append({"title": title, "src": src, "ans": ans, "q": q, "opts": opts})
+        points.append({
+            "title": title, "src": src, "ans": ans,
+            "explain": explain, "mnemonic": mnemonic,
+            "q": q, "opts": opts,
+        })
     return points
 
 
 _LC_HOT_RE = re.compile(r"##\s*🔥 今日热点[^\n]*\n(.+?)(?=\n##\s|\Z)", re.S)
-_LC_KNOW_RE = re.compile(r"##\s*📚 今日知识[：:]\s*([^\n]+)\n[（(]([^）)]+)[）)]")
+_LC_KNOW_RE = re.compile(r"##\s*📚 今日知识[：:]\s*([^\n（(]+)[（(]([^）)\n]+)[）)]")
 _LC_KNOW_BODY_RE = re.compile(r"##\s*📚 今日知识[^\n]*\n(.+?)(?=\n##\s|\Z)", re.S)
-_LC_DABAI_RE = re.compile(r"📌 \*\*一句人话\*\*[：:]?\s*([^\n]+(?:\n(?![🍎💡]).*)*)")
-_LC_TIP_RE = re.compile(r"##\s*💬 小白提示\s*\n([^\n]+)")
+_LC_DABAI_RE = re.compile(r"📌 \*\*一句人话\*\*[：:]?\s*(.+?)(?=\n\s*🍎|\n\s*💡|\n\s*##|\Z)", re.S)
+_LC_BIYU_RE = re.compile(r"🍎 \*\*举个例子\*\*[：:]?\s*\n(.+?)(?=\n\s*💡|\n\s*##|\Z)", re.S)
+_LC_ZHUYI_RE = re.compile(r"💡 \*\*对我有什么用\*\*[：:]?\s*\n(.+?)(?=\n\s*##|\Z)", re.S)
+_LC_TIP_RE = re.compile(r"##\s*💬 小白提示\s*\n(.+?)(?=\n---\n|\n\s*##|\Z)", re.S)
 
 
 def parse_lc_md(text):
-    """从每日 md 抽出热点标题/来源/影响 + 知识概念/层/大白话/小白提示。"""
+    """从每日 md 抽出热点 + 知识概念（名/层/大白话/举个例子/对我有什么用/小白提示）。"""
     hot_m = _LC_HOT_RE.search(text)
     hot_body = hot_m.group(1) if hot_m else ""
-    # 事件行：**事件**：...
     ev_m = re.search(r"\*\*事件\*\*[：:]\s*([^\n]+)", hot_body)
     src_m = re.search(r"\*\*来源\*\*[：:]\s*([^\n]+)", hot_body)
-    # 知识概念
+
     know_m = _LC_KNOW_RE.search(text)
     know_name = know_m.group(1).strip() if know_m else ""
     know_level = know_m.group(2).strip() if know_m else ""
-    # 大白话
+
     dabai_m = _LC_DABAI_RE.search(text)
     dabai = dabai_m.group(1).strip() if dabai_m else ""
-    # 小白提示
+    biyu_m = _LC_BIYU_RE.search(text)
+    biyu = biyu_m.group(1).strip() if biyu_m else ""
+    zhuyi_m = _LC_ZHUYI_RE.search(text)
+    zhuyi = zhuyi_m.group(1).strip() if zhuyi_m else ""
     tip_m = _LC_TIP_RE.search(text)
     tip = tip_m.group(1).strip() if tip_m else ""
+
     return {
         "hot_event": ev_m.group(1).strip() if ev_m else "",
         "hot_src": src_m.group(1).strip() if src_m else "",
         "know_name": know_name,
         "know_level": know_level,
         "dabai": dabai,
+        "biyu": biyu,
+        "zhuyi": zhuyi,
         "tip": tip,
     }
 
@@ -606,28 +805,31 @@ def _analyze_kg_weekly(history):
 def _analyze_lc_weekly(history):
     this_week, _ = week_bounds(history)
     if not this_week:
-        return {"summary": None, "hot": None, "week_range": None}
+        return {"summary": None, "hot": None, "week_range": None, "concepts": []}
     week_start = this_week[0]["date"]
     week_end = this_week[-1]["date"]
 
     # 收集本周所有概念 + 热点
     concepts = []
     hots = []
-    parsed_by_date = {}
     for h in this_week:
         p = parse_lc_md(h["md"])
-        parsed_by_date[h["date"]] = p
         if p["know_name"]:
-            concepts.append({"date": h["date"], **p})
+            concepts.append({
+                "date": h["date"],
+                "know_name": p["know_name"],
+                "know_level": p["know_level"],
+                "dabai": p["dabai"],
+                "biyu": p["biyu"],
+                "zhuyi": p["zhuyi"],
+                "tip": p["tip"],
+            })
         if p["hot_event"]:
-            hots.append({"date": h["date"], "event": p["hot_event"], "src": p["hot_src"]})
+            hots.append({"date": h["date"], "event": p["hot_event"]})
 
-    # 推断 level 升级：本周讲的概念里有几个 L3+ → 是否覆盖
     levels_seen = sorted(set(c.get("know_level", "").split(" ")[0] for c in concepts if c.get("know_level")))
 
-    # 薄弱项：基于 covered 数量（进度 json 里）
-    # 薄弱 level：进度里 covered < 3 但已升到该 level → 该 level 后续概念可能生疏
-
+    # ── 本周回顾：重点回顾新概念，附大白话/举个例子/对我有什么用/小白提示 ──
     summary_lines = []
     summary_lines.append(f"## 📈 本周回顾（{week_start} ~ {week_end}）")
     summary_lines.append("")
@@ -636,31 +838,43 @@ def _analyze_lc_weekly(history):
     if levels_seen:
         summary_lines.append(f"**覆盖层级**：{' → '.join(levels_seen)}")
         summary_lines.append("")
-    summary_lines.append("**本周概念索引**：")
-    for i, c in enumerate(concepts, 1):
-        summary_lines.append(f"{i}. [{c['date']}] **{c['know_name']}**（{c.get('know_level', '—')}）")
-    summary_lines.append("")
-    summary_lines.append("**本周小白提示回顾**：")
-    for c in concepts:
-        if c.get("tip"):
-            summary_lines.append(f"- [{c['date']}] {c['tip']}")
-    summary_lines.append("")
+    if not concepts:
+        summary_lines.append("本周暂无新概念推送，每天 12:30 自动学习一个。")
+        summary_lines.append("")
+    else:
+        summary_lines.append("**📚 本周新概念回顾**：")
+        summary_lines.append("")
+        for i, c in enumerate(concepts, 1):
+            summary_lines.append(f"### {i}. {c['know_name']}（{c.get('know_level', '—')}）· [{c['date']}]")
+            if c.get("dabai"):
+                summary_lines.append(f"- **一句人话**：{c['dabai']}")
+            if c.get("biyu"):
+                summary_lines.append(f"- **举个例子**：{c['biyu']}")
+            if c.get("zhuyi"):
+                summary_lines.append(f"- **对我有什么用**：{c['zhuyi']}")
+            if c.get("tip"):
+                summary_lines.append(f"- **小白提示**：{c['tip']}")
+            summary_lines.append("")
 
+    # ── 本周热点回顾：不含来源，事件本身 ──
     hot_lines = []
     hot_lines.append(f"## 🔥 本周热点回顾（{week_start} ~ {week_end}）")
     hot_lines.append("")
-    for i, h in enumerate(hots, 1):
-        hot_lines.append(f"### 热点 {i} · [{h['date']}]")
-        hot_lines.append(f"**事件**：{h['event']}")
-        if h["src"]:
-            hot_lines.append(f"**来源**：{h['src']}")
+    if not hots:
+        hot_lines.append("本周暂无热点。")
         hot_lines.append("")
+    else:
+        for i, h in enumerate(hots, 1):
+            hot_lines.append(f"### 热点 {i} · [{h['date']}]")
+            hot_lines.append(f"{h['event']}")
+            hot_lines.append("")
 
     return {
         "week_range": [week_start, week_end],
         "levels_seen": levels_seen,
         "summary": "\n".join(summary_lines),
         "hot": "\n".join(hot_lines),
+        "concepts": concepts,  # 结构化，供前端渲染可跳转按钮
     }
 
 
@@ -756,6 +970,7 @@ def build(kg_dir, lc_dir, data_out, source_root=None):
     out.append("    weekly_summary: " + (js_md_lit(lc_weekly["summary"]) if lc_weekly.get("summary") else "null") + ",")
     out.append("    weekly_hot: " + (js_md_lit(lc_weekly["hot"]) if lc_weekly.get("hot") else "null") + ",")
     out.append("    weekly_range: " + json.dumps(lc_weekly.get("week_range"), ensure_ascii=False) + ",")
+    out.append("    weekly_concepts: " + json.dumps(lc_weekly.get("concepts", []), ensure_ascii=False) + ",")
     out.append("    today_md: " + js_md_lit(lc_md_text) + ",")
     out.append("    history_md: " + json.dumps([{"date": h["date"], "md": h["md"]} for h in lc_history], ensure_ascii=False))
     out.append("  },")
@@ -778,7 +993,8 @@ if __name__ == "__main__":
     ap.add_argument("--source")
     a = ap.parse_args()
     src = a.source or os.environ.get("SOURCE_DIR") or SOURCE_DIR
-    kg_dir = a.kg_dir or os.environ.get("KG_DIR") or os.path.join(src, "kaogong")
-    lc_dir = a.lc_dir or os.environ.get("LC_DIR") or os.path.join(src, "licai")
-    data_out = a.out or os.environ.get("DATA_OUT") or DATA_OUT
+    # 本地优先：若项目内 02_每日推送源 存在则用本地，否则回退云端 source/
+    kg_dir = a.kg_dir or os.environ.get("KG_DIR") or (LOCAL_KG_DIR if os.path.isdir(LOCAL_KG_DIR) else os.path.join(src, "kaogong"))
+    lc_dir = a.lc_dir or os.environ.get("LC_DIR") or (LOCAL_LC_DIR if os.path.isdir(LOCAL_LC_DIR) else os.path.join(src, "licai"))
+    data_out = a.out or os.environ.get("DATA_OUT") or (LOCAL_DATA_OUT if os.path.isdir(PKG_ROOT) else DATA_OUT)
     build(kg_dir, lc_dir, data_out, source_root=src)
