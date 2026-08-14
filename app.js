@@ -123,6 +123,13 @@
     var segs = md.split(/\n[#]{2,3} 知识点 \d+：/).slice(1);
 
     var points = segs.map(function (seg) {
+      // 归一化：兼容 LLM 偶发漏写加粗 ** 的格式（📌 讲解：→ 📌 **讲解**：等），避免讲解/口诀解析丢失
+      seg = seg
+        .replace(/📌 讲解：/g, "📌 **讲解**：")
+        .replace(/🧠 口诀：/g, "🧠 **口诀**：")
+        .replace(/✅ 答案：/g, "✅ **答案**：")
+        .replace(/🔍 解析：/g, "🔍 **解析**：")
+        .replace(/📝 真题：/g, "📝 **真题**：");
       var title = (seg.match(/^([^\n]+)/) || [, "知识点"])[1].trim();
 
       // 讲解：新格式 📌 **讲解**：…🧠；旧格式 📌 知识点讲解：** …**🧠
