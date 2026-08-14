@@ -604,6 +604,12 @@ def parse_kg_md(text):
     # 按 "### 知识点" 分割
     chunks = re.split(r"### 知识点\s*\d+", text)
     for chunk in chunks[1:]:
+        # 归一化：兼容 LLM 偶发漏写加粗 ** 的格式（📌 讲解：→ 📌 **讲解**：），否则讲解/口诀解析丢失
+        chunk = re.sub(r"📌 讲解：", "📌 **讲解**：", chunk)
+        chunk = re.sub(r"🧠 口诀：", "🧠 **口诀**：", chunk)
+        chunk = re.sub(r"✅ 答案：", "✅ **答案**：", chunk)
+        chunk = re.sub(r"🔍 解析：", "🔍 **解析**：", chunk)
+        chunk = re.sub(r"📝 真题：", "📝 **真题**：", chunk)
         # 标题在第一行
         title_m = re.match(r"\s*[:：]\s*([^\n]+)", chunk)
         if not title_m:
