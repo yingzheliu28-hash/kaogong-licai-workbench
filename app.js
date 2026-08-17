@@ -480,7 +480,10 @@ return {
     // 理财「今日知识」Tab 的本地视图状态
     lcSelectedDate: D.snapshot_date,   // 当前展示的理财日期（YYYY-MM-DD）
     lcCalendarExpanded: false,          // 日历是否展开
-    lcCalendarMonth: null               // 日历展示月份（YYYY-MM）
+    lcCalendarMonth: null,              // 日历展示月份（YYYY-MM）
+    // 每周小测 Tab 的本地视图状态
+    examDate: null,     // 当前小测日期（YYYY-MM-DD），null=最新一期
+    examMode: "redo"    // redo（做题判分）| review（仅回顾）
   };
 
   /* ── 日期 & 周次 ── */
@@ -753,6 +756,23 @@ return {
     return m[wrongReasonKey(dateStr, qIdx)] || "";
   }
   // 显示用：优先用户自定原因 → 退回 md 的 reason → "未标注"
+  /* ── 每周小测：作答记录 + 本地错题（localStorage） ── */
+  var EXAM_LS_KEY = "kg_exam_answers_v1";
+  var LOCAL_WRONG_LS_KEY = "kg_local_wrong_v1";
+  function loadExamAnswers() {
+    try { return JSON.parse(localStorage.getItem(EXAM_LS_KEY) || "{}") || {}; }
+    catch (e) { return {}; }
+  }
+  function saveExamAnswers(map) {
+    try { localStorage.setItem(EXAM_LS_KEY, JSON.stringify(map)); } catch (e) {}
+  }
+  function loadLocalWrong() {
+    try { return JSON.parse(localStorage.getItem(LOCAL_WRONG_LS_KEY) || "[]") || []; }
+    catch (e) { return []; }
+  }
+  function saveLocalWrong(list) {
+    try { localStorage.setItem(LOCAL_WRONG_LS_KEY, JSON.stringify(list)); } catch (e) {}
+  }
   function getDisplayReason(w) {
     var user = getUserWrongReason(w.date, w.q_idx);
     if (user) return user;
@@ -798,6 +818,15 @@ return {
     history.forEach(function (h) {
       (h.wrong || []).forEach(function (w) {
         allWrong.push(Object.assign({}, w, { date: h.date, week: h.week, score: h.score }));
+      });
+    });
+    // 合并本地错题（在站点「每周小测」上做的题，尚未回写 md）
+    loadLocalWrong().forEach(function (w) {
+      allWrong.push({
+        q_idx: w.qIdx, module: w.module, topic: w.topic,
+        user_answer: w.userAnswer, correct_answer: w.correctAnswer,
+        reason: w.reason || "", question: w.question,
+        date: w.date, week: "", score: "", local: true
       });
     });
     if (allWrong.length === 0) {
@@ -867,34 +896,186 @@ return {
     '</div>';
   }
 
+  /* -- Tab: 每周小测（在线作答 / 判分 / 仅回顾） -- */
+  var examPending = {};  // 不定项临时勾选 {dateStr: {qIdx: [letters]}}
+
+  function getExamPapers() {
+    return (D.kaogong.quiz_papers || []).slice().sort(function (a, b) {
+      return a.date < b.date ? 1 : -1;
+    });
+  }
+  function getCurrentExamPaper() {
+    var papers = getExamPapers();
+    if (!papers.length) return null;
+    if (state.examDate) {
+      for (var i = 0; i < papers.length; i++) {
+        if (papers[i].date === state.examDate) return papers[i];
+      }
+    }
+    return papers[0];
+  }
+  function ansLetters(s) {
+    return String(s || "").split("").filter(function (c) { return /[A-Z]/.test(c); }).sort().join("");
+  }
+  function isAnswerCorrect(user, correct) { return ansLetters(user) === ansLetters(correct); }
+  function getPending(dateStr, qIdx) {
+    var p = examPending[dateStr] || {};
+    return (p[qIdx] || []).slice();
+  }
+  function togglePending(dateStr, qIdx, letter) {
+    if (!examPending[dateStr]) examPending[dateStr] = {};
+    var arr = examPending[dateStr][qIdx] || [];
+    var i = arr.indexOf(letter);
+    if (i >= 0) arr.splice(i, 1); else arr.push(letter);
+    arr.sort();
+    examPending[dateStr][qIdx] = arr;
+  }
+  function clearPending(dateStr, qIdx) {
+    if (examPending[dateStr]) delete examPending[dateStr][qIdx];
+  }
+  function removeLocalWrong(dateStr, qIdx) {
+    var list = loadLocalWrong();
+    list = list.filter(function (w) { return !(w.date === dateStr && w.qIdx === qIdx); });
+    saveLocalWrong(list);
+  }
+  function recordLocalWrong(dateStr, q, userAns) {
+    var list = loadLocalWrong();
+    list = list.filter(function (w) { return !(w.date === dateStr && w.qIdx === q.idx); });
+    list.push({
+      date: dateStr, qIdx: q.idx, module: q.module, topic: q.topic,
+      userAnswer: userAns, correctAnswer: q.answer, reason: "",
+      question: {
+        stem: q.stem, options: q.options, answer: q.answer,
+        explanation: q.explanation, knowledge_point: q.knowledge_point
+      }
+    });
+    saveLocalWrong(list);
+  }
+  function copyText(text) {
+    function fb() {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(fb);
+    } else fb();
+  }
+
+  function renderKgExam() {
+    var papers = getExamPapers();
+    var paper = getCurrentExamPaper();
+    if (!paper) {
+      document.getElementById("kg-content").innerHTML =
+        '<div class="wrong-empty fade"><div class="big-emoji">🧪</div>' +
+        '<p>还没有小测题源。周六晚由「考公周末小测」自动化生成，生成后可在这里在线作答。</p></div>';
+      return;
+    }
+    var answers = loadExamAnswers()[paper.date] || {};
+    var answeredCount = paper.questions.filter(function (q) { return !!answers[String(q.idx)]; }).length;
+    var correctCount = paper.questions.filter(function (q) {
+      var u = answers[String(q.idx)] || "";
+      return u && isAnswerCorrect(u, q.answer);
+    }).length;
+
+    var dateNav = papers.map(function (p) {
+      var active = p.date === paper.date ? " active" : "";
+      var doneMap = loadExamAnswers()[p.date] || {};
+      var done = Object.keys(doneMap).length > 0;
+      return '<button type="button" class="exam-date-btn' + active + '" onclick="WB.selectExamDate(\'' + p.date + '\')">' +
+        p.date.slice(5).replace("-", "/") + (done ? ' ✓' : '') + '</button>';
+    }).join("");
+
+    var modeBar =
+      '<button type="button" class="exam-mode-btn' + (state.examMode === "redo" ? " active" : "") + '" onclick="WB.setExamMode(\'redo\')">✏️ 重做</button>' +
+      '<button type="button" class="exam-mode-btn' + (state.examMode === "review" ? " active" : "") + '" onclick="WB.setExamMode(\'review\')">👀 仅回顾</button>';
+
+    var questionsHtml = paper.questions.map(function (q) {
+      return renderExamQuestion(q, paper.date, answers);
+    }).join("");
+
+    document.getElementById("kg-content").innerHTML =
+      '<div class="exam-date-nav">' + dateNav + '</div>' +
+      '<div class="exam-controls">' +
+        modeBar +
+        '<span class="exam-progress">已答 ' + answeredCount + '/' + paper.questions.length +
+          ' · 对 ' + correctCount + '</span>' +
+        '<button type="button" class="kg-jump-btn" onclick="WB.exportExamResult(\'' + paper.date + '\')">📤 导出本次成绩</button>' +
+      '</div>' +
+      '<div class="exam-questions">' + questionsHtml + '</div>' +
+      '<div style="margin-top:var(--sp-3);font-size:var(--fs-xs);color:var(--mist);text-align:center;">' +
+        '📌 选完立即判分（对→绿 / 错→红）；做错的题自动进「错题本」。导出成绩后贴回 WorkBuddy 对话，可永久存档到成绩 + 错题本。</div>';
+  }
+
+  function renderExamQuestion(q, dateStr, answers) {
+    var isMulti = q.is_multiple || ansLetters(q.answer).length > 1;
+    var userAns = answers[String(q.idx)] || "";
+    var done = !!userAns;
+    var correct = done ? isAnswerCorrect(userAns, q.answer) : null;
+    var pending = (isMulti && !done) ? getPending(dateStr, q.idx) : [];
+    var showResult = (state.examMode === "review") || done;
+
+    var tagHtml =
+      (q.topic ? '<span class="sector-tag" style="background:rgba(160,150,220,.15);color:#6d5bd0;margin-left:6px;">📍 ' + esc(q.topic) + '</span>' : '') +
+      (isMulti ? '<span class="sector-tag" style="background:rgba(255,200,87,.18);color:#a07820;margin-left:6px;">不定项</span>' : '') +
+      (q.is_review ? '<span class="sector-tag" style="background:rgba(94,123,90,.15);color:#3a7a4d;margin-left:6px;">🔁 错题重考</span>' : '');
+
+    var optsHtml = q.options.map(function (o) {
+      var L = o.letter, t = o.text;
+      var cls = "exam-opt"; var mark = "";
+      if (showResult) {
+        var isCorr = ansLetters(q.answer).indexOf(L) >= 0;
+        var isUser = (userAns.indexOf(L) >= 0);
+        if (isCorr) { cls += " correct"; mark = '<span class="opt-mark ok">✓</span>'; }
+        else if (isUser && !isCorr) { cls += " wrong"; mark = '<span class="opt-mark err">✗</span>'; }
+      } else if (isMulti && pending.indexOf(L) >= 0) {
+        cls += " picked";
+      }
+      var click = showResult ? "" :
+        (isMulti
+          ? 'onclick="WB.pickExamOption(\'' + dateStr + '\',' + q.idx + ',\'' + L + '\')"'
+          : 'onclick="WB.answerExamSingle(\'' + dateStr + '\',' + q.idx + ',\'' + L + '\')"');
+      return '<button type="button" class="' + cls + '" ' + click + '>' +
+        '<span class="opt-letter">' + L + '</span><span class="opt-text">' + esc(t) + '</span>' + mark + '</button>';
+    }).join("");
+
+    var explHtml = "";
+    if (showResult) {
+      var verdict = "";
+      if (done) verdict = correct
+        ? '<div class="exam-verdict ok">✅ 答对了</div>'
+        : '<div class="exam-verdict wrong">❌ 答错了</div>';
+      explHtml = '<div class="exam-explain">' + verdict +
+        '<div class="exam-answer">正确答案：<b>' + esc(q.answer) + '</b>' +
+          (done ? '　你的答案：<b class="' + (correct ? "correct-ans" : "user-ans") + '">' + esc(userAns) + '</b>' : '') +
+        '</div>' +
+        (q.explanation ? '<div class="exam-exp-text">💡 ' + esc(q.explanation) + '</div>' : '') +
+        (q.knowledge_point ? '<div class="exam-kp">🎯 考点：' + esc(q.knowledge_point) + '</div>' : '') +
+      '</div>';
+    }
+
+    var submitHtml = "";
+    if (state.examMode === "redo" && isMulti && !done) {
+      submitHtml = '<button type="button" class="exam-submit-btn" onclick="WB.submitExamMulti(\'' + dateStr + '\',' + q.idx + ')">提交本题</button>';
+    }
+
+    return '<div class="exam-card fade" data-eq="' + dateStr + '_' + q.idx + '">' +
+      '<div class="exam-card-head"><span class="exam-num">第 ' + q.idx + ' 题</span>' + tagHtml + '</div>' +
+      '<div class="exam-stem">' + esc(q.stem) + '</div>' +
+      '<div class="exam-opts">' + optsHtml + '</div>' +
+      submitHtml + explHtml +
+    '</div>';
+  }
+
   /* -- Tab: 周测分析（折叠题回顾 + 答题点评 + 错误原因选择 + 累计统计 + 薄弱项） -- */
   function renderKgQuiz() {
     var stats = D.kaogong.quiz_stats || {};
     var last = stats.last_quiz;
     var history = D.kaogong.quiz_history || [];
-    var weeklyQuizMd = D.kaogong.weekly_quiz;
 
-    // 1. 周测题回顾（可折叠）
-    var quizSection = "";
-    if (weeklyQuizMd) {
-      var qm = weeklyQuizMd.match(/共\s*(\d+)\s*题/);
-      var qcount = qm ? qm[1] : "?";
-      quizSection =
-        '<div class="kg-card fade" style="margin-bottom:var(--sp-3);">' +
-          '<details class="quiz-details">' +
-            '<summary>📝 本周小测回顾（共 ' + qcount + ' 题）· 点击展开</summary>' +
-            '<div class="md-rendered" style="margin-top:var(--sp-3);">' + mdToHtml(weeklyQuizMd) + '</div>' +
-          '</details>' +
-        '</div>';
-    } else {
-      quizSection =
-        '<div class="quiz-empty fade" style="margin-bottom:var(--sp-3);">' +
-          '<div class="big-emoji">📝</div>' +
-          '<p>本周小测尚未发布。周六晚上由「公考周末小测」自动化生成。</p>' +
-        '</div>';
-    }
-
-    // 2. 答题点评：列出错题（每条只显示知识点 + 原因选择，不重列题干）
+    // 1. 答题点评：列出错题（每条只显示知识点 + 原因选择，不重列题干）
     var feedbackSection = "";
     if (last) {
       var lastWrong = last.wrong || [];
@@ -1016,7 +1197,6 @@ return {
     }
 
     document.getElementById("kg-content").innerHTML =
-      quizSection +
       feedbackSection +
       cumulativeSection +
       weaknessSection;
@@ -1064,6 +1244,7 @@ return {
   /* 考公 tab 分发 */
   var KgRenderers = {
     "kg-knowledge": renderKgKnowledge,
+    "kg-exam": renderKgExam,
     "kg-weak": renderKgWeak,
     "kg-wrong": renderKgWrong,
     "kg-quiz": renderKgQuiz,
@@ -1491,6 +1672,82 @@ return {
       var inp = document.getElementById("kgSearchInput");
       if (inp) inp.value = "";
       renderKaogong();
+    },
+    /* 每周小测：日期 / 模式 / 作答 / 导出 */
+    selectExamDate: function (dateStr) {
+      state.examDate = dateStr;
+      state.examMode = "redo";
+      renderKaogong();
+    },
+    setExamMode: function (mode) {
+      state.examMode = mode;
+      renderKaogong();
+    },
+    answerExamSingle: function (dateStr, qIdx, letter) {
+      var all = loadExamAnswers();
+      if (!all[dateStr]) all[dateStr] = {};
+      all[dateStr][String(qIdx)] = letter;
+      saveExamAnswers(all);
+      var paper = getCurrentExamPaper();
+      if (paper) {
+        for (var i = 0; i < paper.questions.length; i++) {
+          var q = paper.questions[i];
+          if (q.idx === qIdx) {
+            if (isAnswerCorrect(letter, q.answer)) removeLocalWrong(dateStr, qIdx);
+            else recordLocalWrong(dateStr, q, letter);
+            break;
+          }
+        }
+      }
+      renderKaogong();
+    },
+    pickExamOption: function (dateStr, qIdx, letter) {
+      togglePending(dateStr, qIdx, letter);
+      renderKaogong();
+    },
+    submitExamMulti: function (dateStr, qIdx) {
+      var pending = getPending(dateStr, qIdx);
+      if (!pending.length) { toast("请先勾选选项"); return; }
+      var ans = pending.join("");
+      clearPending(dateStr, qIdx);
+      var all = loadExamAnswers();
+      if (!all[dateStr]) all[dateStr] = {};
+      all[dateStr][String(qIdx)] = ans;
+      saveExamAnswers(all);
+      var paper = getCurrentExamPaper();
+      if (paper) {
+        for (var i = 0; i < paper.questions.length; i++) {
+          var q = paper.questions[i];
+          if (q.idx === qIdx) {
+            if (isAnswerCorrect(ans, q.answer)) removeLocalWrong(dateStr, qIdx);
+            else recordLocalWrong(dateStr, q, ans);
+            break;
+          }
+        }
+      }
+      renderKaogong();
+    },
+    exportExamResult: function (dateStr) {
+      var paper = getCurrentExamPaper();
+      if (!paper) return;
+      var all = loadExamAnswers();
+      var ans = all[dateStr] || {};
+      var lines = [];
+      var correctCount = 0;
+      paper.questions.forEach(function (q) {
+        var u = ans[String(q.idx)] || "";
+        if (u && isAnswerCorrect(u, q.answer)) correctCount++;
+        lines.push(q.idx + "-" + (u || "未答"));
+      });
+      var wrong = paper.questions.filter(function (q) {
+        var u = ans[String(q.idx)] || "";
+        return u && !isAnswerCorrect(u, q.answer);
+      });
+      var text = "小测做完了，答案如下：\n" + lines.join(" ") +
+        "\n（得分 " + correctCount + "/" + paper.questions.length + "）" +
+        (wrong.length ? "\n错题：" + wrong.map(function (q) { return "第" + q.idx + "题·" + (q.topic || q.module); }).join("、") : "");
+      copyText(text);
+      toast("✅ 成绩已复制到剪贴板，请贴回 WorkBuddy 对话存档");
     },
     /* 错题原因选择（块状按钮 + 自定义输入 → localStorage 持久化） */
     setWrongReason: function (dateStr, qIdx, reason) {
