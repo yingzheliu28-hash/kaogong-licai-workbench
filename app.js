@@ -759,6 +759,9 @@ return {
   /* ── 每周小测：作答记录 + 本地错题（localStorage） ── */
   var EXAM_LS_KEY = "kg_exam_answers_v1";
   var LOCAL_WRONG_LS_KEY = "kg_local_wrong_v1";
+  // 云函数写回地址（部署 Vercel 后填入真实地址）；留空则「提交成绩」按钮降级为「导出」提示
+  var EXAM_SUBMIT_URL = "https://kaogong-exam-api.vercel.app/api/submit";
+  var EXAM_AUTH_KEY = "wb-exam-2026";
   function loadExamAnswers() {
     try { return JSON.parse(localStorage.getItem(EXAM_LS_KEY) || "{}") || {}; }
     catch (e) { return {}; }
@@ -1002,11 +1005,12 @@ return {
         modeBar +
         '<span class="exam-progress">已答 ' + answeredCount + '/' + paper.questions.length +
           ' · 对 ' + correctCount + '</span>' +
-        '<button type="button" class="kg-jump-btn" onclick="WB.exportExamResult(\'' + paper.date + '\')">📤 导出本次成绩</button>' +
+        '<button type="button" class="kg-jump-btn primary" onclick="WB.submitExam(\'' + paper.date + '\')">📤 提交成绩（自动存档）</button>' +
+        '<button type="button" class="kg-jump-btn" onclick="WB.exportExamResult(\'' + paper.date + '\')">📋 导出文本</button>' +
       '</div>' +
       '<div class="exam-questions">' + questionsHtml + '</div>' +
       '<div style="margin-top:var(--sp-3);font-size:var(--fs-xs);color:var(--mist);text-align:center;">' +
-        '📌 选完立即判分（对→绿 / 错→红）；做错的题自动进「错题本」。导出成绩后贴回 WorkBuddy 对话，可永久存档到成绩 + 错题本。</div>';
+        '📌 选完立即判分（对→绿 / 错→红）；做错的题自动进「错题本」。全部答完后点「提交成绩」自动存档到 GitHub（需已配置云函数）。</div>';
   }
 
   function renderExamQuestion(q, dateStr, answers) {
@@ -1748,6 +1752,63 @@ return {
         (wrong.length ? "\n错题：" + wrong.map(function (q) { return "第" + q.idx + "题·" + (q.topic || q.module); }).join("、") : "");
       copyText(text);
       toast("✅ 成绩已复制到剪贴板，请贴回 WorkBuddy 对话存档");
+    },
+    /* 提交成绩到云函数（自动写回 GitHub） */
+    submitExam: function (dateStr) {
+      var paper = getCurrentExamPaper();
+      if (!paper) return;
+      if (!EXAM_SUBMIT_URL) {
+        toast("⚠️ 云函数尚未配置，请点「导出文本」或联系我配置");
+        return;
+      }
+      var all = loadExamAnswers();
+      var ans = all[dateStr] || {};
+      var unanswered = paper.questions.filter(function (q) { return !ans[String(q.idx)]; });
+      if (unanswered.length) {
+        toast("还有 " + unanswered.length + " 题未作答，请先做完再提交");
+        return;
+      }
+      var score = 0;
+      var answers = paper.questions.map(function (q) {
+        var u = ans[String(q.idx)] || "";
+        var ok = isAnswerCorrect(u, q.answer);
+        if (ok) score++;
+        return { idx: q.idx, module: q.topic || q.module, user: u, correct: q.answer, ok: ok, reason: "" };
+      });
+      var wrong = paper.questions.filter(function (q) {
+        var u = ans[String(q.idx)] || "";
+        return u && !isAnswerCorrect(u, q.answer);
+      }).map(function (q) {
+        return {
+          idx: q.idx, module: q.module, topic: q.topic, stem: q.stem,
+          user: ans[String(q.idx)], correct: q.answer,
+          explanation: q.explanation, knowledge_point: q.knowledge_point, reason: ""
+        };
+      });
+      var body = {
+        key: EXAM_AUTH_KEY,
+        date: dateStr,
+        week: paper.week || 0,
+        range: "",
+        score: score,
+        total: paper.questions.length,
+        answers: answers,
+        wrong: wrong
+      };
+      toast("⏳ 正在提交成绩…");
+      fetch(EXAM_SUBMIT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        if (j && j.ok) {
+          toast("✅ 成绩已自动存档（" + j.score + "）到 GitHub，站点 1~2 分钟内更新");
+        } else {
+          toast("⚠️ 提交失败：" + (j && j.error ? j.error : "未知错误") + "，可点「导出文本」手动存档");
+        }
+      }).catch(function () {
+        toast("⚠️ 提交失败（网络），可点「导出文本」手动存档");
+      });
     },
     /* 错题原因选择（块状按钮 + 自定义输入 → localStorage 持久化） */
     setWrongReason: function (dateStr, qIdx, reason) {
