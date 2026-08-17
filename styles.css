@@ -1495,3 +1495,84 @@ body {
   .kg-search-card { padding: var(--sp-2) var(--sp-3); }
   #kgSearchInput { font-size: var(--fs-sm); }
 }
+
+/* ══════════════════════════════════════
+   每周小测（在线作答 / 判分 / 仅回顾）
+   ══════════════════════════════════════ */
+.exam-date-nav { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.exam-date-btn {
+  font-family: var(--mono); font-size: var(--fs-sm);
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm);
+  border: 1.5px solid var(--kg-border); background: var(--kg-card); color: var(--mist);
+  cursor: pointer; transition: all .15s ease;
+}
+.exam-date-btn:hover { border-color: var(--kg-accent); color: var(--kg-accent); }
+.exam-date-btn.active { background: var(--kg-accent); border-color: var(--kg-accent); color: #fff; }
+
+.exam-controls {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2);
+  margin-bottom: var(--sp-3); padding: var(--sp-3); background: var(--kg-bg);
+  border: 1px solid var(--kg-border); border-radius: var(--radius);
+}
+.exam-mode-btn {
+  font-family: var(--serif); font-size: var(--fs-sm);
+  padding: var(--sp-2) var(--sp-4); border-radius: 20px;
+  border: 1.5px solid var(--kg-border); background: #fff; color: var(--mist);
+  cursor: pointer; transition: all .15s ease;
+}
+.exam-mode-btn:hover { border-color: var(--kg-accent); color: var(--kg-accent); }
+.exam-mode-btn.active { background: var(--kg-accent); border-color: var(--kg-accent); color: #fff; }
+.exam-progress { font-family: var(--mono); font-size: var(--fs-xs); color: var(--mist); margin-left: auto; }
+
+.exam-questions { display: flex; flex-direction: column; gap: var(--sp-3); }
+.exam-card {
+  background: var(--kg-card); border: 1px solid var(--kg-border);
+  border-radius: var(--radius); padding: var(--sp-4); box-shadow: var(--shadow-sm);
+}
+.exam-card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: var(--sp-2); }
+.exam-num { font-family: var(--mono); font-size: var(--fs-sm); font-weight: 600; color: var(--kg-accent); }
+.exam-stem { font-size: var(--fs-base); font-weight: 500; color: var(--ink); margin-bottom: var(--sp-3); line-height: 1.7; }
+
+.exam-opts { display: flex; flex-direction: column; gap: var(--sp-2); }
+.exam-opt {
+  display: flex; align-items: center; gap: var(--sp-2); text-align: left;
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm);
+  border: 1.5px solid var(--kg-border); background: #fff; color: var(--ink);
+  font-size: var(--fs-sm); cursor: pointer; transition: all .15s ease;
+}
+.exam-opt:hover { border-color: var(--kg-accent); background: var(--kg-bg); }
+.exam-opt .opt-letter {
+  flex: none; width: 26px; height: 26px; line-height: 26px; text-align: center;
+  border-radius: 50%; font-family: var(--mono); font-size: var(--fs-sm);
+  border: 1.5px solid var(--mist); color: var(--mist); background: #fff;
+}
+.exam-opt .opt-text { flex: 1; line-height: 1.6; }
+.exam-opt .opt-mark { flex: none; font-size: var(--fs-xs); padding: 1px 8px; border-radius: 20px; }
+
+.exam-opt.correct { border-color: rgba(94,123,90,.5); background: rgba(94,123,90,.10); cursor: default; }
+.exam-opt.correct .opt-letter { border-color: var(--green); color: #fff; background: var(--green); }
+.exam-opt.wrong { border-color: rgba(181,86,63,.5); background: rgba(181,86,63,.10); cursor: default; }
+.exam-opt.wrong .opt-letter { border-color: var(--red); color: #fff; background: var(--red); }
+.exam-opt.picked { border-color: var(--kg-accent); background: var(--kg-bg); }
+.exam-opt.picked .opt-letter { border-color: var(--kg-accent); color: #fff; background: var(--kg-accent); }
+.exam-opt.correct:hover { background: rgba(94,123,90,.10); }
+.exam-opt.wrong:hover { background: rgba(181,86,63,.10); }
+
+.exam-submit-btn {
+  margin-top: var(--sp-2); padding: var(--sp-1) var(--sp-4);
+  border-radius: 20px; border: 1.5px solid var(--kg-accent);
+  background: var(--kg-accent); color: #fff; font-size: var(--fs-sm); cursor: pointer;
+}
+.exam-submit-btn:hover { opacity: .88; }
+
+.exam-explain {
+  margin-top: var(--sp-3); padding: var(--sp-3);
+  background: var(--kg-bg); border-radius: var(--radius-sm);
+  border-left: 3px solid var(--kg-accent);
+}
+.exam-verdict { font-size: var(--fs-sm); font-weight: 600; margin-bottom: var(--sp-1); }
+.exam-verdict.ok { color: var(--green); }
+.exam-verdict.wrong { color: var(--red); }
+.exam-answer { font-size: var(--fs-sm); color: var(--ink); margin-bottom: var(--sp-1); }
+.exam-exp-text { font-size: var(--fs-sm); color: var(--dai); line-height: 1.7; margin-top: var(--sp-1); }
+.exam-kp { font-size: var(--fs-xs); color: var(--mist); margin-top: var(--sp-2); }
