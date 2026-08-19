@@ -768,6 +768,10 @@ def parse_kg_md(text):
 _LC_HOT_RE = re.compile(r"##\s*🔥 今日热点[^\n]*\n(.+?)(?=\n##\s|\Z)", re.S)
 _LC_KNOW_RE = re.compile(r"##\s*📚 今日知识[：:]\s*([^\n（(]+)[（(]([^）)\n]+)[）)]")
 _LC_KNOW_BODY_RE = re.compile(r"##\s*📚 今日知识[^\n]*\n(.+?)(?=\n##\s|\Z)", re.S)
+# ⚠️【解析硬规则 2026-08-19 定，勿改回】marker 后禁止硬性要求换行 `\n`：
+#   正文须用 `[：:]?\s*(.+?)` 兼容「冒号后同行」与「冒号后换行」两种写法；
+#   正文可能含 bullet list（多行），靠 re.S + 非贪婪 `.+?` + lookahead 捕获到下一个 marker/## 为止，
+#   才能完整拿到多行内容（否则 biyu/zhuyi 里的列表会整段丢失）。
 _LC_DABAI_RE = re.compile(r"📌 \*\*一句人话\*\*[：:]?\s*(.+?)(?=\n\s*🍎|\n\s*💡|\n\s*##|\Z)", re.S)
 _LC_BIYU_RE = re.compile(r"🍎 \*\*举个例子\*\*[：:]?\s*(.+?)(?=\n\s*💡|\n\s*##|\Z)", re.S)
 _LC_ZHUYI_RE = re.compile(r"💡 \*\*对我有什么用\*\*[：:]?\s*(.+?)(?=\n\s*##|\Z)", re.S)
