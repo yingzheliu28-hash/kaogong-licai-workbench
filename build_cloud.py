@@ -270,6 +270,107 @@ def find_quiz_question(weekly_quiz_md, q_idx):
     }
 
 
+def _parse_quiz_options(block):
+    """从题目块解析选项，兼容「多行每行一个选项」和「单行多选项（A. xx　B. xx）」。"""
+    per_line = []
+    for line in block.split("\n"):
+        m2 = re.match(r"^([A-Z])\.\s*(.+)$", line.strip())
+        if m2:
+            per_line.append({"letter": m2.group(1), "text": m2.group(2).strip()})
+    single_line = []
+    for line in block.split("\n"):
+        matches = re.findall(r"(?:^|\s)([A-Z])\.\s*([^A-Z]+?)(?=\s+[A-Z]\.|$)", line)
+        if len(matches) >= 2 and len(matches) > len(single_line):
+            single_line = [{"letter": m[0], "text": m[1].strip()} for m in matches]
+    return single_line if len(single_line) > len(per_line) else per_line
+
+
+def parse_weekly_quiz_paper(md):
+    """把一份「每周小测」md 解析成结构化题目数组（供前端在线作答/判分/回顾）。
+
+    兼容三种格式：
+      1) 统一 v2：### 第 N 题（模块·子主题）+ **题干：** + A/B/C/D + 末尾密钥段
+      2) 老格式：**N.** 题干 + 末尾密钥段
+      3) 8-16 旧新格式：### 第 N 题 + **题干：** + ✅ 答案：X（无密钥段，无解析）
+
+    返回 list[dict]，每项含 idx/module/topic/stem/options/answer/explanation/knowledge_point/is_multiple/is_review。
+    """
+    if not md:
+        return None
+
+    # 1) 密钥段：N. 答案：X ｜ 解析：... ｜ **考点：...**
+    key_map = {}
+    key_sec = re.search(r"【答案与解析密钥】[^\n]*\n(.*?)(?=\n\s*---\s*\n|\n\s*#|\Z)", md, re.S)
+    if key_sec:
+        for line in key_sec.group(1).split("\n"):
+            m = re.match(r"^\s*(\d+)\s*[\.、]\s*答案[：:]\s*([^\s|｜]+)\s*[|｜]\s*解析[：:]\s*(.+)$", line)
+            if m:
+                idx = int(m.group(1))
+                expl = m.group(3).strip()
+                kp = ""
+                km = re.search(r"\*\*考点[：:]\s*([^*]+?)\s*\*\*", expl)
+                if km:
+                    kp = km.group(1).strip()
+                    expl = expl.replace(km.group(0), "").strip(" ｜")
+                key_map[idx] = {"answer": m.group(2).strip(), "explanation": expl, "knowledge_point": kp}
+
+    # 2) 题目块起点（兼容新/老格式）
+    starts = []  # (pos, idx, topic, typ)
+    for m in re.finditer(r"^###\s*第\s*(\d+)\s*题\s*[（(]([^）)]*)[）)]", md, re.M):
+        starts.append((m.start(), int(m.group(1)), m.group(2).strip(), "new"))
+    if not starts:
+        for m in re.finditer(r"^\*\*\s*(\d+)\s*\.\*\*\s*(.+)$", md, re.M):
+            starts.append((m.start(), int(m.group(1)), "", "old"))
+    starts.sort()
+
+    questions = []
+    for i, (pos, idx, topic, typ) in enumerate(starts):
+        end = starts[i + 1][0] if i + 1 < len(starts) else None
+        block = md[pos:end] if end else md[pos:]
+
+        # 题型 / 错题重考标记
+        is_multiple = ("不定项" in block or "多选" in block or "不定项" in topic)
+        is_review = ("错题重考" in block or "错题重考" in topic)
+
+        # 题干 + 选项
+        stem = ""
+        options = []
+        if typ == "old":
+            m_stem = re.match(r"^\*\*\s*\d+\s*\.\*\*\s*(.+)$", block.split("\n", 1)[0])
+            if m_stem:
+                stem = m_stem.group(1).strip()
+            options = _parse_quiz_options(block)
+        else:
+            m_stem = re.search(r"\*\*题干[：:]\*\*\s*(.+)", block)
+            if m_stem:
+                stem = m_stem.group(1).strip()
+            options = _parse_quiz_options(block)
+
+        # 答案：密钥段优先，其次题内 ✅ 答案
+        inline_ans = ""
+        am = re.search(r"✅\s*答案[：:]\s*([^\s\n]+)", block)
+        if am:
+            inline_ans = am.group(1).strip()
+
+        k = key_map.get(idx, {})
+        module = topic.split("·")[0].strip() if "·" in topic else (topic or "")
+
+        questions.append({
+            "idx": idx,
+            "module": module,
+            "topic": topic,
+            "stem": stem,
+            "options": options,
+            "answer": k.get("answer", "") or inline_ans,
+            "explanation": k.get("explanation", ""),
+            "knowledge_point": k.get("knowledge_point", ""),
+            "is_multiple": is_multiple,
+            "is_review": is_review,
+        })
+
+    return questions or None
+
+
 def _extract_quiz_date_range(weekly_quiz_md, week_date_str):
     """从本周小测 md 头部提取覆盖日期范围，如 "08/03–08/09"。
 
@@ -351,11 +452,36 @@ def read_kaogong_quiz_state(kg_dir):
     返回 dict(weekly_quiz_md, quiz_history, stats, wrongbook_md, weekly_summary_md)
     """
     out = {"weekly_quiz_md": None, "quiz_history": [], "stats": {"cumulative": False, "total_quizzes": 0},
-           "wrongbook_md": None, "weekly_summary_md": None}
+           "wrongbook_md": None, "weekly_summary_md": None, "quiz_papers": []}
 
     weekly_quiz_dir = os.path.join(kg_dir, "每周小测")
     if not os.path.isdir(weekly_quiz_dir):
         return out
+
+    # 收集所有题源文件（<日期>-本周小测.md）→ 结构化 papers（供「每周小测」Tab 在线作答）
+    quiz_files = {}
+    for f in sorted(os.listdir(weekly_quiz_dir)):
+        m = re.match(r"^(\d{4}-\d{2}-\d{2})-本周小测\.md$", f)
+        if m:
+            quiz_files[m.group(1)] = os.path.join(weekly_quiz_dir, f)
+    papers = []
+    for date in sorted(quiz_files.keys()):
+        qmd = read_optional_file(quiz_files[date])
+        qs = parse_weekly_quiz_paper(qmd)
+        if qs:
+            week = 0
+            wm = re.search(r"第\s*(\d+)\s*周周末小测", qmd or "")
+            if wm:
+                week = int(wm.group(1))
+            else:
+                try:
+                    base = datetime.date(2026, 8, 1)
+                    d = datetime.date.fromisoformat(date)
+                    week = (d - base).days // 7 + 1
+                except Exception:
+                    week = 0
+            papers.append({"date": date, "week": week, "questions": qs})
+    out["quiz_papers"] = papers
 
     # 找所有 <日期>-成绩.md，按日期升序
     score_files = []
@@ -365,12 +491,6 @@ def read_kaogong_quiz_state(kg_dir):
             score_files.append((m.group(1), os.path.join(weekly_quiz_dir, f)))
     if not score_files:
         return out
-
-    quiz_files = {}  # 日期 -> 本周小测.md 路径
-    for f in sorted(os.listdir(weekly_quiz_dir)):
-        m = re.match(r"^(\d{4}-\d{2}-\d{2})-本周小测\.md$", f)
-        if m:
-            quiz_files[m.group(1)] = os.path.join(weekly_quiz_dir, f)
 
     history = []
     for week, score_path in score_files:
@@ -649,8 +769,8 @@ _LC_HOT_RE = re.compile(r"##\s*🔥 今日热点[^\n]*\n(.+?)(?=\n##\s|\Z)", re.
 _LC_KNOW_RE = re.compile(r"##\s*📚 今日知识[：:]\s*([^\n（(]+)[（(]([^）)\n]+)[）)]")
 _LC_KNOW_BODY_RE = re.compile(r"##\s*📚 今日知识[^\n]*\n(.+?)(?=\n##\s|\Z)", re.S)
 _LC_DABAI_RE = re.compile(r"📌 \*\*一句人话\*\*[：:]?\s*(.+?)(?=\n\s*🍎|\n\s*💡|\n\s*##|\Z)", re.S)
-_LC_BIYU_RE = re.compile(r"🍎 \*\*举个例子\*\*[：:]?\s*\n(.+?)(?=\n\s*💡|\n\s*##|\Z)", re.S)
-_LC_ZHUYI_RE = re.compile(r"💡 \*\*对我有什么用\*\*[：:]?\s*\n(.+?)(?=\n\s*##|\Z)", re.S)
+_LC_BIYU_RE = re.compile(r"🍎 \*\*举个例子\*\*[：:]?\s*(.+?)(?=\n\s*💡|\n\s*##|\Z)", re.S)
+_LC_ZHUYI_RE = re.compile(r"💡 \*\*对我有什么用\*\*[：:]?\s*(.+?)(?=\n\s*##|\Z)", re.S)
 _LC_TIP_RE = re.compile(r"##\s*💬 小白提示\s*\n(.+?)(?=\n---\n|\n\s*##|\Z)", re.S)
 
 
@@ -932,6 +1052,7 @@ def build(kg_dir, lc_dir, data_out, source_root=None):
     weekly_quiz_md = quiz_state.get("weekly_quiz_md")
     quiz_history = quiz_state.get("quiz_history") or []
     quiz_stats = quiz_state.get("stats") or {"cumulative": False, "total_quizzes": 0}
+    quiz_papers = quiz_state.get("quiz_papers") or []
     wrongbook_md = quiz_state.get("wrongbook_md")
 
     # 笔记：浏览器导出到 source/notes.json 即可跨设备同步
@@ -959,6 +1080,8 @@ def build(kg_dir, lc_dir, data_out, source_root=None):
     # 错题本 + 周测分析 + 累计统计（全部联动 真实文件 每周小测/<日期>-成绩.md）
     out.append("    quiz_history: " + json.dumps(quiz_history, ensure_ascii=False) + ",")
     out.append("    quiz_stats: " + json.dumps(quiz_stats, ensure_ascii=False) + ",")
+    # 结构化题源（历次小测，含答案+解析）→ 供「每周小测」Tab 在线作答/判分/回顾
+    out.append("    quiz_papers: " + json.dumps(quiz_papers, ensure_ascii=False) + ",")
     # 错题本 = 真实文件 我的错题本.md（跨周错题重考池）
     out.append("    wrongbook: " + (js_md_lit(wrongbook_md) if wrongbook_md else "null") + ",")
     # 兼容旧字段
