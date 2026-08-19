@@ -75,11 +75,21 @@
     return s;
   }
   function bullet(s, key) {
-    // 多行匹配：marker 之后到下一个 ** / ## 或文件末尾，覆盖 biyu/zhuyi 含 bullet list 的情况
-    var re = new RegExp("\\*\\*[^\\n]*?" + key + "[^\\n]*?\\*\\*：([\\s\\S]*?)(?=\\n\\s*\\*\\*|\\n\\s*##|$)");
+    // ⚠️【解析硬规则 2026-08-19 定】
+    // 1) marker 行可能带 emoji（📌/🍎/💡/📝/🧠/🔍/✅/📊 等），下一 marker 前允许 emoji 前缀，
+    //    否则 lookahead `(?=\n\s*\*\*)` 会因 `\n🍎 **` 中间夹 emoji 永远不命中，导致 dabai/biyu/zhuyi
+    //    一路抓到文件末尾、互相吞噬（即"重复"根因）
+    // 2) 正文里的 `**加粗**` 必须剥掉，否则前端 esc 后字面显示 `**申购费**`
+    var re = new RegExp(
+      "\\*\\*[^\\n]*?" + key + "[^\\n]*?\\*\\*：([\\s\\S]*?)(?=\\n\\s*(?:[📌🍎💡📝🧠🔍✅📊][^\\n]*?)?\\*\\*|\\n\\s*##|$)"
+    );
     var m = s.match(re);
     if (!m) return "";
-    return m[1].replace(/\s*\n+\s*/g, " ").trim();
+    return m[1]
+      .replace(/\*\*/g, "")           // 剥加粗标记（** 不出现在最终渲染）
+      .replace(/\s*\n+\s*/g, " ")    // 多行压成一段，保持旧视觉习惯
+      .replace(/\s*---\s*$/, "")      // 抹掉尾部被吞下的 markdown 分隔符
+      .trim();
   }
 
   /* ── 每日标语池 ── */
