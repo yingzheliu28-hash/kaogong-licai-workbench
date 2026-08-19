@@ -75,8 +75,11 @@
     return s;
   }
   function bullet(s, key) {
-    var re = new RegExp("\\*\\*[^\\n]*?" + key + "[^\\n]*?\\*\\*：([^\\n]*)");
-    var m = s.match(re); return m ? m[1].trim() : "";
+    // 多行匹配：marker 之后到下一个 ** / ## 或文件末尾，覆盖 biyu/zhuyi 含 bullet list 的情况
+    var re = new RegExp("\\*\\*[^\\n]*?" + key + "[^\\n]*?\\*\\*：([\\s\\S]*?)(?=\\n\\s*\\*\\*|\\n\\s*##|$)");
+    var m = s.match(re);
+    if (!m) return "";
+    return m[1].replace(/\s*\n+\s*/g, " ").trim();
   }
 
   /* ── 每日标语池 ── */
