@@ -831,19 +831,29 @@ return {
   function renderKgWrong() {
     var history = D.kaogong.quiz_history || [];
     var allWrong = [];
+    var seen = {};
+    function key(dateStr, qIdx) { return (dateStr || "") + "_" + (qIdx || "?"); }
     history.forEach(function (h) {
       (h.wrong || []).forEach(function (w) {
-        allWrong.push(Object.assign({}, w, { date: h.date, week: h.week, score: h.score }));
+        var k = key(h.date, w.q_idx);
+        if (!seen[k]) {
+          seen[k] = true;
+          allWrong.push(Object.assign({}, w, { date: h.date, week: h.week, score: h.score }));
+        }
       });
     });
     // 合并本地错题（在站点「每周小测」上做的题，尚未回写 md）
     loadLocalWrong().forEach(function (w) {
-      allWrong.push({
-        q_idx: w.qIdx, module: w.module, topic: w.topic,
-        user_answer: w.userAnswer, correct_answer: w.correctAnswer,
-        reason: w.reason || "", question: w.question,
-        date: w.date, week: "", score: "", local: true
-      });
+      var k = key(w.date, w.qIdx);
+      if (!seen[k]) {
+        seen[k] = true;
+        allWrong.push({
+          q_idx: w.qIdx, module: w.module, topic: w.topic,
+          user_answer: w.userAnswer, correct_answer: w.correctAnswer,
+          reason: w.reason || "", question: w.question,
+          date: w.date, week: "", score: "", local: true
+        });
+      }
     });
     if (allWrong.length === 0) {
       document.getElementById("kg-content").innerHTML =
@@ -1817,6 +1827,12 @@ return {
         body: JSON.stringify(body)
       }).then(function (r) { return r.json(); }).then(function (j) {
         if (j && j.ok) {
+          // 提交成功后清空本次作答与本题本地缓存，避免云端回写后重复显示
+          var all = loadExamAnswers();
+          delete all[dateStr];
+          saveExamAnswers(all);
+          var localWrongs = loadLocalWrong().filter(function (w) { return w.date !== dateStr; });
+          saveLocalWrong(localWrongs);
           toast("✅ 成绩已自动存档（" + j.score + "）到 GitHub，站点 1~2 分钟内更新");
         } else {
           toast("⚠️ 提交失败：" + (j && j.error ? j.error : "未知错误") + "，可点「导出文本」手动存档");
