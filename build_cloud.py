@@ -165,9 +165,16 @@ def parse_quiz_score_md(path):
 
 
 def find_quiz_title(weekly_quiz_md, q_idx):
-    """从 `每周小测/<日期>-本周小测.md` 里按 q_idx 反查 title（保留旧兼容）。"""
+    """从 `每周小测/<日期>-本周小测.md` 里按 q_idx 反查 title（优先 v2 格式）。"""
     if not weekly_quiz_md:
         return ""
+    # v2 与旧格式统一走 parse_weekly_quiz_paper
+    papers = parse_weekly_quiz_paper(weekly_quiz_md)
+    if papers:
+        for q in papers:
+            if q["idx"] == q_idx:
+                return q["stem"]
+    # 兜底老格式
     pat = re.compile(r"^\*\*\s*(\d+)\s*\.\*\*\s*([^\n]+)", re.M)
     for m in pat.finditer(weekly_quiz_md):
         if int(m.group(1)) == q_idx:
@@ -176,13 +183,26 @@ def find_quiz_title(weekly_quiz_md, q_idx):
 
 
 def find_quiz_question(weekly_quiz_md, q_idx):
-    """从 `每周小测/<日期>-本周小测.md` 里按 q_idx 解析完整题目。
+    """从 `每周小测/<日期>-本周小测.md` 里按 q_idx 解析完整题目（兼容 v2 与旧格式）。
 
     返回 dict(stem, options, answer, explanation, knowledge_point)；
     解析失败返回 None。options 是 [(letter, text)] 列表。
     """
     if not weekly_quiz_md:
         return None
+    # v2/旧格式统一走 parse_weekly_quiz_paper（v2 含 ### 第 N 题（模块·子主题））
+    papers = parse_weekly_quiz_paper(weekly_quiz_md)
+    if papers:
+        for q in papers:
+            if q["idx"] == q_idx:
+                return {
+                    "stem": q["stem"],
+                    "options": [(o["letter"], o["text"]) for o in q["options"]],
+                    "answer": q["answer"],
+                    "explanation": q["explanation"],
+                    "knowledge_point": q["knowledge_point"],
+                }
+    # 兜底老格式（兼容最旧 **N.** 题干）
     # 题目块起点：**N.** 或 **N.**（不定项）
     start_pat = re.compile(r"^\*\*\s*(\d+)\s*\.\*\*\s*(.+?)\s*$", re.M)
     m_start = None
