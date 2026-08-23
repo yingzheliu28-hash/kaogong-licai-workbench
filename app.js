@@ -865,7 +865,9 @@ return {
   function renderWrongCard(w) {
     var q = w.question || {};
     var stem = q.stem || w.title || "（题源未解析）";
-    var opts = q.options || [];
+    var opts = (q.options || []).map(function (o) {
+      return Array.isArray(o) ? [o[0], o[1]] : [o.letter || o[0], o.text || o[1]];
+    });
     var userAns = (w.user_answer || "").split("").filter(function (c) { return /[A-Z]/.test(c); });
     var corrAns = (w.correct_answer || "").split("").filter(function (c) { return /[A-Z]/.test(c); });
     var optsHtml = opts.length
