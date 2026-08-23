@@ -1129,5 +1129,9 @@ if __name__ == "__main__":
     # 本地优先：若项目内 02_每日推送源 存在则用本地，否则回退云端 source/
     kg_dir = a.kg_dir or os.environ.get("KG_DIR") or (LOCAL_KG_DIR if os.path.isdir(LOCAL_KG_DIR) else os.path.join(src, "kaogong"))
     lc_dir = a.lc_dir or os.environ.get("LC_DIR") or (LOCAL_LC_DIR if os.path.isdir(LOCAL_LC_DIR) else os.path.join(src, "licai"))
-    data_out = a.out or os.environ.get("DATA_OUT") or (LOCAL_DATA_OUT if os.path.isdir(PKG_ROOT) else DATA_OUT)
+    # data.js 始终写在脚本所在目录（HERE）下：
+    # - 本地：HERE = 01_站点前端 → 01_站点前端/data.js（wb_deploy_api 读取位置）
+    # - 仓库根（GitHub Actions）：HERE = 仓库根 → 仓库根/data.js（工作流 git 提交位置）
+    # 不再依赖 PKG_ROOT/01_站点前端 这一「本地项目布局」假设，避免云端路径不存在导致 open(w) 崩溃。
+    data_out = a.out or os.environ.get("DATA_OUT") or os.path.join(HERE, "data.js")
     build(kg_dir, lc_dir, data_out, source_root=src)
