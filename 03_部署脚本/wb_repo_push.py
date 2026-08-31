@@ -85,9 +85,23 @@ def push(local, repo_path):
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+
+    # 支持指定仓库：--repo owner/repo（默认主仓库）
+    # 注意：在模块级代码中变量本就是全局的，不需要 global 声明
+    while args and args[0].startswith("--repo="):
+        parts = args.pop(0).split("=", 1)[1].strip().split("/")
+        if len(parts) == 2 and parts[0] and parts[1]:
+            OWNER, REPO = parts[0], parts[1]
+            BASE = "https://api.github.com/repos/%s/%s/contents" % (OWNER, REPO)
+        else:
+            print("ERROR: --repo 格式应为 owner/repo")
+            sys.exit(1)
+
     if len(args) < 2:
-        print("用法: python wb_repo_push.py LOCAL_PATH REPO_PATH [LOCAL2 REPO2 ...]")
+        print("用法: python wb_repo_push.py [--repo=owner/repo] LOCAL_PATH REPO_PATH [LOCAL2 REPO2 ...]")
+        print("默认仓库: %s/%s" % (OWNER, REPO))
         sys.exit(1)
+
     ok = True
     i = 0
     while i < len(args):
