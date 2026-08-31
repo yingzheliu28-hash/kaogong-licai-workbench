@@ -1447,7 +1447,7 @@ return {
         var up = f.chg >= 0;
         return '<div class="fund-card fade">' +
           '<div class="fund-name">' + esc(f.name) + '</div>' +
-          (f.sector ? '<div style="font-family:var(--mono);font-size:10px;color:var(--mist);margin-bottom:4px;">🏷️ ' + esc(f.sector) + '</div>' : '') +
+          (f.sector ? '<div style="font-family:var(--mono);font-size:12px;color:var(--mist);margin-bottom:4px;">🏷️ ' + esc(f.sector) + '</div>' : '') +
           '<div class="fund-price">' + (f.price || "—") + '</div>' +
           '<div class="fund-chg ' + (up ? "up" : "down") + '">' +
             (up ? "▲ " : "▼ ") + (typeof f.chg === "number" ? f.chg.toFixed(2) + "%" : f.chg) +
