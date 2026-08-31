@@ -1,4 +1,4 @@
-// Vercel Serverless Function：凭据体检端点（**只读**，不会写任何文件）
+// Vercel Serverless Function：凭据体检端点（**只读**，不会写任何文件；2026-08-31 部署）
 //
 // 用途：本地 `03_部署脚本/wb_check_credentials.py` 调用它，用来验证「Vercel 环境变量里的
 //       GITHUB_PAT」是否仍然有效，并与本地 PAT 副本做对比。
