@@ -31,6 +31,7 @@
 | **Python 解释器** | `C:\Users\<用户名>\.workbuddy\binaries\python\versions\3.13.12\python.exe` | WorkBuddy 托管；用绝对路径 |
 | **GitHub PAT · 副本 1（本地）** | `C:\Users\<用户名>\.workbuddy\secrets\wb_github_pat` | 本地脚本用；**过期时副本 2 也要一起换，见 §2.1** |
 | **GitHub PAT · 副本 2（Vercel）** | Vercel → `kaogong-exam-api` → Settings → Environment Variables → `GITHUB_PAT` | 云函数用；**改完必须重新 Deploy 才生效** |
+| **Vercel 云函数仓库** | `yingzheliu28-hash/kaogong-exam-api`（独立仓库） | 站点「提交成绩」的云函数；**推代码到这里才生效**，主仓库里的 `06_云函数/` 只是备份 |
 | **自动化 cwds** | `<项目根>\02_每日推送源` | 唯一需要手填绝对路径的地方；prompt 内全用相对路径 |
 
 ### ⚠️ §2.1 GitHub PAT 有两份副本，必须同步更新（2026-08-31 事故）
@@ -58,6 +59,20 @@ python 03_部署脚本/wb_check_credentials.py
 
 **权限要求**：`repo` 即可（`workflow` 非必需）。`sync.yml` 是 `on: push: paths: ['source/**']`，
 云函数写文件本身就会触发重建，代码里的 `dispatchWorkflow()` 只是冗余保险。
+
+### 还有一个坑：Vercel 项目连接的是**独立仓库**
+
+实际部署的 Vercel 项目 `kaogong-exam-api` 导入的是：
+```
+https://github.com/yingzheliu28-hash/kaogong-exam-api
+```
+**不是**主仓库 `kaogong-licai-workbench` 里的 `06_云函数/` 子目录。
+所以：
+- 主仓库 `kaogong-licai-workbench/06_云函数/` 只是**备份/归档**
+- 想让站点生效，必须推到独立仓库 `yingzheliu28-hash/kaogong-exam-api`
+- 只推主仓库不会触发 Vercel 重新部署
+
+推送命令见 `06_云函数/README.md`「正确的推送命令」。
 
 **快速判定是哪份失效**（不想跑脚本时手动看）：
 - 本地脚本报 401 → 副本 1 挂了
