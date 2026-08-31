@@ -49,6 +49,37 @@ python 03_部署脚本/wb_check_credentials.py
 
 ---
 
+## ⚠️ 第二件事：Vercel 项目连接的是**独立仓库**
+
+实际部署的 Vercel 项目 **`kaogong-exam-api`** 导入的是独立仓库：
+
+```
+https://github.com/yingzheliu28-hash/kaogong-exam-api
+```
+
+而不是主仓库 `kaogong-licai-workbench` 里的 `06_云函数/` 子目录。
+
+**这意味着**：
+- 主仓库 `kaogong-licai-workbench/06_云函数/` 只是**备份/归档**（换电脑时能从主仓库拉回）
+- 想让站点真正生效，必须推到 **独立仓库** `yingzheliu28-hash/kaogong-exam-api`
+- 只推主仓库不会触发 Vercel 重新部署
+
+### 正确的推送命令
+
+```bash
+cd "考公理财工作台_完整迁移包"
+python "03_部署脚本/wb_repo_push.py" --repo=yingzheliu28-hash/kaogong-exam-api \
+  "06_云函数/api/submit.js" "api/submit.js" \
+  "06_云函数/api/health.js" "api/health.js" \
+  "06_云函数/vercel.json" "vercel.json" \
+  "06_云函数/package.json" "package.json" \
+  "06_云函数/README.md" "README.md"
+```
+
+推完后 Vercel 会自动重新拉取部署（一般 10~30 秒）。
+
+---
+
 ## 部署步骤（Vercel）
 
 1. 用 GitHub 账号登录 vercel.com
