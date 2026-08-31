@@ -47,7 +47,7 @@
   --radius-lg: 20px;
   --serif: "Noto Serif SC","Source Han Serif SC","Songti SC",serif;
   --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
-  --fs-xs: 11px; --fs-sm: 13px; --fs-base: 15px; --fs-md: 17px; --fs-lg: 22px; --fs-xl: 28px; --fs-xxl: 36px;
+  --fs-xs: 13px; --fs-sm: 15px; --fs-base: 17px; --fs-md: 19px; --fs-lg: 24px; --fs-xl: 30px; --fs-xxl: 38px;
   --sp-1: 6px; --sp-2: 10px; --sp-3: 16px; --sp-4: 24px; --sp-5: 32px; --sp-6: 48px; --sp-7: 64px;
 }
 
@@ -100,7 +100,7 @@ body {
 .nav-emoji { font-size: var(--fs-md); width: 24px; text-align: center; }
 .nav-label { flex: 1; }
 .nav-badge {
-  font-family: var(--mono); font-size: 10px;
+  font-family: var(--mono); font-size: 12px;
   background: var(--red); color: #fff;
   padding: 1px 7px; border-radius: 10px; min-width: 18px; text-align: center;
 }
@@ -862,7 +862,7 @@ body {
 .wrong-opt .opt-mark {
   flex: 0 0 auto;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 8px;
@@ -1031,7 +1031,7 @@ body {
 /* 错题原因 chip */
 .reason-chip {
   display: inline-block;
-  font-size: 11px;
+  font-size: 13px;
   background: rgba(255,200,87,.15);
   color: #8a6700;
   padding: 2px 8px;
@@ -1058,7 +1058,7 @@ body {
 .bar-fill {
   background: linear-gradient(90deg, #e16d76, #c95b6b);
   color: #fff;
-  font-size: 11px;
+  font-size: 13px;
   padding: 0 8px;
   line-height: 18px;
   min-width: 22px;
@@ -1078,12 +1078,12 @@ body {
 }
 .weakness-item:last-child { border-bottom: none; }
 .weakness-rank {
-  flex: 0 0 22px;
-  height: 22px;
+  flex: 0 0 24px;
+  height: 24px;
   border-radius: 50%;
   background: rgba(225,109,118,.15);
   color: #c95b6b;
-  font-size: 12px;
+  font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1091,7 +1091,7 @@ body {
 }
 .weakness-text { flex: 1; color: var(--ink); }
 .weakness-count {
-  font-size: 11px;
+  font-size: 13px;
   background: rgba(225,109,118,.1);
   color: #c95b6b;
   padding: 2px 8px;
@@ -1214,7 +1214,7 @@ body {
 }
 .kg-date-day {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--mist);
   line-height: 1;
   letter-spacing: 0;
@@ -1490,7 +1490,7 @@ body {
   .kg-week-strip { gap: 4px; }
   .kg-date-btn { padding: 6px 2px; }
   .kg-date-num { font-size: var(--fs-sm); }
-  .kg-date-day { font-size: 9px; }
+  .kg-date-day { font-size: 11px; }
   .kg-cal-day { font-size: var(--fs-xs); }
   .kg-search-card { padding: var(--sp-2) var(--sp-3); }
   #kgSearchInput { font-size: var(--fs-sm); }
