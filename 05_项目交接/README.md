@@ -109,13 +109,17 @@ D:\Desktop\考公理财工作台_完整迁移包\        ← canonical 项目根
 │   ├── wb_workbench_deploy_key / .pub
 │   └── ssh_config.txt
 ├── 05_项目交接\
-│   ├── README.md                           # 本文件
-│   ├── 进度说明.md
-│   └── 新对话启动模板.md
+│   ├── README.md                           # 本文件（★ §2.1 PAT 双副本必读）
+│   ├── 进度说明.md                          # 迭代历史
+│   ├── 换电脑迁移指南.md                    # 5 步 checklist
+│   ├── 新电脑自动化提示词.md                # 5 条可直接复制的 prompt
+│   ├── 周测答卷处理流程.md                  # 对话里存档小测成绩的标准流程
+│   └── 前后端解析一致性规范.md              # 改解析/格式前必读
 └── 06_云函数\                              ← 站点「提交成绩」自动写回（Vercel）
     ├── api/submit.js                       # 用 PAT 副本 2 写 source/kaogong/
+    ├── api/health.js                       # 只读体检端点（供 wb_check_credentials.py）
     ├── package.json / vercel.json
-    └── README.md                           # 部署步骤 + 环境变量说明
+    └── README.md                           # 部署步骤 + 环境变量 + 端点速查
 ```
 
 ---
