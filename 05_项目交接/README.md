@@ -2,7 +2,8 @@
 
 > 给接手这个项目的人（包括下一个对话里的新 agent）一份**自包含的全景说明**：项目是什么、怎么跑、文件在哪、怎么改、迁移时要注意什么。
 
-最后更新：**2026-08-19 15:50**（随项目进度滚动更新，改完大迭代请同步到本文件 + `进度说明.md`）
+最后更新：**2026-08-31 17:50**（随项目进度滚动更新，改完大迭代请同步到本文件 + `进度说明.md`）
+> 2026-08-31 新增 §2.1「GitHub PAT 有两份副本，必须同步更新」——站点「提交成绩」报 401 的根因。
 
 ---
 
@@ -28,8 +29,40 @@
 | **GitHub 仓库** | https://github.com/yingzheliu28-hash/kaogong-licai-workbench | source/ 收录全部 md + 05_项目交接/ 完整备份 |
 | **GitHub Pages 站点** | https://yingzheliu28-hash.github.io/kaogong-licai-workbench/ | 浏览器实际访问的站点 |
 | **Python 解释器** | `C:\Users\<用户名>\.workbuddy\binaries\python\versions\3.13.12\python.exe` | WorkBuddy 托管；用绝对路径 |
-| **GitHub PAT** | `C:\Users\<用户名>\.workbuddy\secrets\wb_github_pat` | contents:write + workflow |
+| **GitHub PAT · 副本 1（本地）** | `C:\Users\<用户名>\.workbuddy\secrets\wb_github_pat` | 本地脚本用；**过期时副本 2 也要一起换，见 §2.1** |
+| **GitHub PAT · 副本 2（Vercel）** | Vercel → `kaogong-exam-api` → Settings → Environment Variables → `GITHUB_PAT` | 云函数用；**改完必须重新 Deploy 才生效** |
 | **自动化 cwds** | `<项目根>\02_每日推送源` | 唯一需要手填绝对路径的地方；prompt 内全用相对路径 |
+
+### ⚠️ §2.1 GitHub PAT 有两份副本，必须同步更新（2026-08-31 事故）
+
+同一个 PAT 被**两个互不相干的地方**各存了一份，任何一份过期都会让对应链路失效：
+
+| 副本 | 存放位置 | 谁在用 | 失效后的症状 |
+|---|---|---|---|
+| **1. 本地** | `C:\Users\<用户名>\.workbuddy\secrets\wb_github_pat` | `wb_push_source.py` / `wb_deploy_api.py` / `wb_repo_push.py` / `wb_pull_source.py` | 本地推送脚本报 401 |
+| **2. Vercel** | Vercel → `kaogong-exam-api` → Settings → Environment Variables → `GITHUB_PAT` | 云函数 `06_云函数/api/submit.js` | **站点一切正常，只有点「提交成绩（自动存档）」报 401** |
+
+**⚠️ 这是全项目最坑的故障模式**：副本 2 过期时，本地脚本、站点浏览、每日推送**全都正常**，
+只有「在线做小测 → 提交」这一个动作失败。很容易误判成代码 bug 或前端问题。
+
+**所以 PAT 到期/重新生成时，两处必须一起换**：
+
+1. 覆盖写入 `C:\Users\<用户名>\.workbuddy\secrets\wb_github_pat`
+2. Vercel → `kaogong-exam-api` → Settings → Environment Variables → 更新 `GITHUB_PAT`
+3. **在 Vercel 项目里点 Redeploy**（Vercel 不会热加载环境变量，不重新部署改了也不生效）
+4. 跑一次自检确认：
+
+```bash
+python 03_部署脚本/wb_check_credentials.py
+```
+
+**权限要求**：`repo` 即可（`workflow` 非必需）。`sync.yml` 是 `on: push: paths: ['source/**']`，
+云函数写文件本身就会触发重建，代码里的 `dispatchWorkflow()` 只是冗余保险。
+
+**快速判定是哪份失效**（不想跑脚本时手动看）：
+- 本地脚本报 401 → 副本 1 挂了
+- 站点提交报 `GET source/... 失败 HTTP 401` → **副本 2 挂了**
+- 站点提交报「key 校验失败」(403) → 副本 2 **有值但无效**（证明输进去了，只是 token 本身过期）
 
 ### ⚠️ Sandbox 镜像 ≠ 真实桌面（教训必读）
 
@@ -67,16 +100,22 @@ D:\Desktop\考公理财工作台_完整迁移包\        ← canonical 项目根
 ├── 03_部署脚本\
 │   ├── wb_push_source.py                   # 单一源 = D:\Desktop\每日wb推送；镜像到 02_ + 推 GitHub
 │   ├── wb_deploy_api.py                    # 推 01_站点前端/data.js → GitHub Pages
-│   ├── wb_repo_push.py                     # 通用 Contents API 推送器
+│   ├── wb_repo_push.py                     # 通用 Contents API 推送器（成绩.md 必须用它推）
+│   ├── wb_pull_source.py                   # 拉云端测验数据回本地（每日自动化开头跑）
+│   ├── wb_check_credentials.py             # PAT 双副本 + 云函数体检（PAT 过期时先跑它）
 │   └── build_cloud.py                      # = 01_站点前端/build_cloud.py 的副本
 ├── 04_密钥与配置\
 │   ├── wb_github_pat
 │   ├── wb_workbench_deploy_key / .pub
 │   └── ssh_config.txt
-└── 05_项目交接\
-    ├── README.md                           # 本文件
-    ├── 进度说明.md
-    └── 新对话启动模板.md
+├── 05_项目交接\
+│   ├── README.md                           # 本文件
+│   ├── 进度说明.md
+│   └── 新对话启动模板.md
+└── 06_云函数\                              ← 站点「提交成绩」自动写回（Vercel）
+    ├── api/submit.js                       # 用 PAT 副本 2 写 source/kaogong/
+    ├── package.json / vercel.json
+    └── README.md                           # 部署步骤 + 环境变量说明
 ```
 
 ---
@@ -156,6 +195,9 @@ data.js                           ← 单一数据快照（window.WB_DATA）
 
 | 现象 | 检查 |
 |---|---|
+| **站点点「提交成绩」报 HTTP 401** | **PAT 副本 2（Vercel `GITHUB_PAT`）过期，见 §2.1；改完必须 Redeploy** |
+| 推送脚本报 401 | PAT 副本 1（`~/.workbuddy/secrets/wb_github_pat`）过期，见 §2.1 |
+| 不确定哪份 PAT 失效 | 跑 `python 03_部署脚本/wb_check_credentials.py` 一键体检 |
 | 站点内容没更新 | `wb_deploy_api.py` 状态；GitHub 最新 commit |
 | 自动化写文件失败 | cwds 是不是 `<项目根>\02_每日推送源` |
 | 周测分析为空 | `02_每日推送源/公考常识判断/每周小测/` 下是否有 `*-成绩.md` |
@@ -172,3 +214,4 @@ data.js                           ← 单一数据快照（window.WB_DATA）
 - **改解析/格式前必读**：`前后端解析一致性规范.md`（三处实现同步 + lookahead 容 emoji + markdown 标记统一出口 + 回归测试）
 - **故障排查**：本文件 §8
 - **手动修复**：`wb_push_source.py` + `build_cloud.py` + `wb_deploy_api.py`
+- **PAT 过期 / 站点提交失败**：先读 §2.1，再跑 `python 03_部署脚本/wb_check_credentials.py`
