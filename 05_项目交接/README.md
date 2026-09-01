@@ -118,6 +118,7 @@ D:\Desktop\考公理财工作台_完整迁移包\        ← canonical 项目根
 │   ├── wb_repo_push.py                     # 通用 Contents API 推送器（成绩.md 必须用它推）
 │   ├── wb_pull_source.py                   # 拉云端测验数据回本地（每日自动化开头跑）
 │   ├── wb_check_credentials.py             # PAT 双副本 + 云函数体检（PAT 过期时先跑它）
+│   ├── wb_push_cloudfn.py                  # 云函数一键双推（主仓库备份 + 独立仓库生效）
 │   └── build_cloud.py                      # = 01_站点前端/build_cloud.py 的副本
 ├── 04_密钥与配置\
 │   ├── wb_github_pat
@@ -217,6 +218,7 @@ data.js                           ← 单一数据快照（window.WB_DATA）
 | **站点点「提交成绩」报 HTTP 401** | **PAT 副本 2（Vercel `GITHUB_PAT`）过期，见 §2.1；改完必须 Redeploy** |
 | 推送脚本报 401 | PAT 副本 1（`~/.workbuddy/secrets/wb_github_pat`）过期，见 §2.1 |
 | 不确定哪份 PAT 失效 | 跑 `python 03_部署脚本/wb_check_credentials.py` 一键体检 |
+| **改了云函数代码但站点没变化** | 只推了主仓库？Vercel 拉的是独立仓库 `kaogong-exam-api`。用 `python 03_部署脚本/wb_push_cloudfn.py` 一键双推 |
 | 站点内容没更新 | `wb_deploy_api.py` 状态；GitHub 最新 commit |
 | 自动化写文件失败 | cwds 是不是 `<项目根>\02_每日推送源` |
 | 周测分析为空 | `02_每日推送源/公考常识判断/每周小测/` 下是否有 `*-成绩.md` |
