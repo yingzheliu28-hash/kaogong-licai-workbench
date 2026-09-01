@@ -64,10 +64,32 @@ https://github.com/yingzheliu28-hash/kaogong-exam-api
 - 想让站点真正生效，必须推到 **独立仓库** `yingzheliu28-hash/kaogong-exam-api`
 - 只推主仓库不会触发 Vercel 重新部署
 
-### 正确的推送命令
+### ✅ 推荐：一键双推（不会漏）
 
 ```bash
-cd "考公理财工作台_完整迁移包"
+python 03_部署脚本/wb_push_cloudfn.py
+```
+
+它会扫描 `06_云函数/` 下所有文件，**同时推两个仓库**：
+
+| 目标 | 路径 | 作用 |
+|---|---|---|
+| 主仓库 `kaogong-licai-workbench` | `06_云函数/<文件>` | 备份，换电脑可拉回 |
+| 独立仓库 `kaogong-exam-api` | `<文件>` | **Vercel 实际拉的，决定站点行为** |
+
+推完 Vercel 会自动重新部署（一般 10~30 秒）。验证：
+
+```bash
+python 03_部署脚本/wb_check_credentials.py
+```
+
+可选参数：
+- `--main-only` —— 只推主仓库（**若已改成方案 B：Vercel 直连主仓库**）
+- `--vercel-only` —— 只推独立仓库
+
+### 备选：手动逐个推
+
+```bash
 python "03_部署脚本/wb_repo_push.py" --repo=yingzheliu28-hash/kaogong-exam-api \
   "06_云函数/api/submit.js" "api/submit.js" \
   "06_云函数/api/health.js" "api/health.js" \
@@ -76,7 +98,15 @@ python "03_部署脚本/wb_repo_push.py" --repo=yingzheliu28-hash/kaogong-exam-a
   "06_云函数/README.md" "README.md"
 ```
 
-推完后 Vercel 会自动重新拉取部署（一般 10~30 秒）。
+> ⚠️ 手动推容易漏掉主仓库那份备份，优先用上面的双推脚本。
+
+### 根治方案（可选）：让 Vercel 直连主仓库
+
+如果已经把 Vercel 项目的 Git 连接改成主仓库 `kaogong-licai-workbench`、
+并把 **Root Directory** 设为 `06_云函数`，那么：
+- 独立仓库 `kaogong-exam-api` 可以弃用
+- 以后只需 `--main-only`（或普通 `wb_push_source.py` 流程）
+- 只剩一份代码，彻底不可能漏
 
 ---
 
