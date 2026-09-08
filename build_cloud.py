@@ -361,9 +361,15 @@ def parse_weekly_quiz_paper(md):
                 stem = m_stem.group(1).strip()
             options = _parse_quiz_options(block)
         else:
-            m_stem = re.search(r"\*\*题干[：:]\*\*\s*(.+)", block)
-            if m_stem:
-                stem = m_stem.group(1).strip()
+            # 改进：题干支持多行（如"有几项"题型含 ①—⑤ 分项），
+            # 合并换行/多余空白为单空格，并在 ①—⑩ 编号前自动补"；"便于阅读
+            m_stem_match = re.search(r"\*\*题干[：:]\*\*\s*(.+?)(?=\n\s*[A-D]\.\s|\Z)", block, re.S)
+            if m_stem_match:
+                raw = m_stem_match.group(1)
+                # 合并任意空白（含换行）为单空格
+                stem = re.sub(r"\s+", " ", raw).strip()
+                # 仅在前一字符是汉字/字母/数字时，①—⑩ 前加"；"（首项若紧跟？/：等标点则不补）
+                stem = re.sub(r"([\u4e00-\u9fa5A-Za-z0-9])\s+([①-⑩])", r"\1；\2", stem)
             options = _parse_quiz_options(block)
 
         # 答案：密钥段优先，其次题内 ✅ 答案
