@@ -5,6 +5,9 @@
     },
     "api/health.js": {
       "maxDuration": 20
+    },
+    "api/save-note.js": {
+      "maxDuration": 30
     }
   }
 }
