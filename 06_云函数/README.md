@@ -105,7 +105,7 @@ python "03_部署脚本/wb_repo_push.py" --repo=yingzheliu28-hash/kaogong-exam-a
 如果已经把 Vercel 项目的 Git 连接改成主仓库 `kaogong-licai-workbench`、
 并把 **Root Directory** 设为 `06_云函数`，那么：
 - 独立仓库 `kaogong-exam-api` 可以弃用
-- 以后只需 `--main-only`（或普通 `wb_push_source.py` 流程）
+- 云函数代码发布使用 `wb_push_cloudfn.py --main-only`；普通 `wb_push_source.py` 只同步内容源，不负责发布云函数代码。
 - 只剩一份代码，彻底不可能漏
 
 ---
@@ -122,6 +122,12 @@ python "03_部署脚本/wb_repo_push.py" --repo=yingzheliu28-hash/kaogong-exam-a
 6. 重新跑 `wb_deploy_api.py` 推送前端文件
 
 > 06_云函数/ 目录内**任何文件改动后都要重新 Deploy**（包括新增 `api/health.js`）。
+
+## 日期与状态说明（2026-09-08 本地核对）
+
+- 请求 date 为题源日期；成绩文件与题源同日期，作答日期另记。正文旧标签“周六日期”不代表该值必须是周六。
+- 当前文档仍按方案 A（独立仓库双推）；本次没有核验远端连接、凭据或执行部署。
+- 本地交接流程以 05_项目交接/README.md 为入口。
 
 ## 数据流
 
@@ -188,3 +194,4 @@ python "03_部署脚本/wb_repo_push.py" --repo=yingzheliu28-hash/kaogong-exam-a
   不覆盖这两个文件（避免本地旧内容冲掉云函数写的新成绩）。
 - 若改为「对话做小测」，agent 写本地后应直接用 `wb_repo_push.py` 单独推这两个文件，
   而不是依赖 `wb_push_source.py`（后者有 `SCORE_RE` 硬跳过 `*-成绩.md`）。
+
