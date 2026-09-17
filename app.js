@@ -775,6 +775,22 @@ return {
   // 云函数写回地址（部署 Vercel 后填入真实地址）；留空则「提交成绩」按钮降级为「导出」提示
   var EXAM_SUBMIT_URL = "https://kaogong-exam-api.vercel.app/api/submit";
   var EXAM_AUTH_KEY = "wb-exam-2026";
+  // 笔记云端同步（保存笔记时自动写回 GitHub source/notes.json，免手动导出）
+  var NOTE_SAVE_URL = "https://kaogong-exam-api.vercel.app/api/save-note";
+  function syncNotesToCloud(map) {
+    if (!NOTE_SAVE_URL) return;
+    try {
+      var clean = {};
+      Object.keys(map).forEach(function (k) {
+        if (map[k] && String(map[k]).trim()) clean[k] = map[k];
+      });
+      fetch(NOTE_SAVE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: EXAM_AUTH_KEY, notes: clean })
+      }).catch(function () { /* 静默失败：本地已落盘，云端下次再同步 */ });
+    } catch (e) { /* 静默失败 */ }
+  }
   function loadExamAnswers() {
     try { return JSON.parse(localStorage.getItem(EXAM_LS_KEY) || "{}") || {}; }
     catch (e) { return {}; }
@@ -1953,6 +1969,7 @@ return {
       var text = ta ? ta.value : "";
       notesAll[key] = text;
       saveAllNotes(notesAll);
+      syncNotesToCloud(notesAll);
       // 重渲染当前 Tab
       var card = sv.closest(".kp-card, .know-card");
       var section = card && card.classList.contains("kp-card") ? "kg" : "lc";
